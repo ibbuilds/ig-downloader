@@ -142,3 +142,40 @@ test('batch reports partial success and unsupported providers without aborting',
     assert.equal(report.results[0].media[0].id, '100');
     assert.match(report.errors[0].error, /Unsupported provider/);
 });
+
+test('CDN semaphore globally limits active work and recovers from a rejected task', async () => {
+    const { createLimiter } = require('../bin/ig-downloader.js');
+    const schedule = createLimiter(2);
+    let active = 0;
+    let peak = 0;
+    const results = await Promise.all(Array.from({ length: 8 }, (_, i) => schedule(async () => {
+        active++;
+        peak = Math.max(peak, active);
+        await new Promise((resolve) => setTimeout(resolve, 3));
+        active--;
+        if (i === 3) throw new Error('transient');
+        return i;
+    }).then((v) => ({ value: v }), (error) => ({ error: error.message }))));
+    assert.equal(peak, 2);
+    assert.deepEqual(results[3], { error: 'transient' });
+    assert.deepEqual(results[7], { value: 7 });
+});
+
+test('pipeline begins CDN transfer before slower independent target finishes resolving', async (t) => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'igd-pipeline-'));
+    t.after(() => fs.rm(root, { recursive: true, force: true }));
+    const log = path.join(root, 'calls.json');
+    const output = path.join(root, 'media');
+    const proc = spawnSync(process.execPath, [
+        '--require', path.resolve('test-support/mock-instagram-network.js'), CLI,
+        'get', 'https://www.instagram.com/stories/example/100/',
+        'https://www.instagram.com/stories/delayed/300/', '--json', '-o', output,
+    ], { encoding: 'utf8', env: { ...process.env, IGD_FIXTURE_LOG: log } });
+    assert.equal(proc.status, 0, proc.stderr);
+    assert.equal(JSON.parse(proc.stdout).results.length, 2);
+    const calls = JSON.parse(await fs.readFile(log, 'utf8'));
+    const cdnFirst = calls.findIndex((call) => call.host === 'scontent.cdninstagram.com');
+    const slowStory = calls.findIndex((call) => call.name === 'PolarisStoriesV3ReelPageGalleryQuery' && call.reelId === '43');
+    assert.ok(cdnFirst >= 0 && slowStory >= 0 && cdnFirst < slowStory,
+        `expected the first CDN request before the slow Story request: ${JSON.stringify(calls)}`);
+});

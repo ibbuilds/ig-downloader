@@ -15,8 +15,10 @@ const story = (pk) => ({
 
 global.fetch = async (url, options = {}) => {
     const address = new URL(url);
-    const name = options.body ? new URLSearchParams(options.body).get('fb_api_req_friendly_name') : null;
-    calls.push({ host: address.hostname, name });
+    const body = options.body ? new URLSearchParams(options.body) : null;
+    const name = body?.get('fb_api_req_friendly_name') || null;
+    const variables = body ? JSON.parse(body.get('variables')) : null;
+    calls.push({ host: address.hostname, name, reelId: variables?.initial_reel_id || null });
     if (address.hostname === 'scontent.cdninstagram.com') {
         const body = Buffer.from([255, 216, 255, 217]);
         return new Response(body, { headers: { 'content-type': 'image/jpeg', 'content-length': String(body.length) } });
@@ -25,14 +27,17 @@ global.fetch = async (url, options = {}) => {
         return new Response('"DTSGInitialData",[],{"token":"test"}');
     }
     if (name === 'PolarisSearchBoxRefetchableQuery') {
+        const username = variables.data.query;
+        if (username === 'delayed') await new Promise((resolve) => setTimeout(resolve, 100));
         return Response.json({ data: {
-            xdt_api__v1__fbsearch__topsearch_connection: { users: [{ user: { id: '42', username: 'example' } }] },
+            xdt_api__v1__fbsearch__topsearch_connection: { users: [{ user: { id: username === 'delayed' ? '43' : '42', username } }] },
         } });
     }
     if (name === 'PolarisStoriesV3ReelPageGalleryQuery') {
         return Response.json({ data: {
             xdt_api__v1__feed__reels_media__connection: {
-                edges: [{ node: { user: { username: 'example' }, items: [story('100'), story('200')] } }],
+                edges: [{ node: { user: { username: variables.initial_reel_id === '43' ? 'delayed' : 'example' },
+                    items: variables.initial_reel_id === '43' ? [story('300')] : [story('100'), story('200')] } }],
             },
         } });
     }

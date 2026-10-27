@@ -139,6 +139,23 @@ async function mapLimit(items, limit, mapper) {
     return results;
 }
 
+/** FIFO semaphore: bound CDN traffic across target workers, without waiting for all target lookups. */
+function createLimiter(limit) {
+    let running = 0;
+    const pending = [];
+    return (task) => new Promise((resolve, reject) => {
+        const start = () => {
+            running++;
+            Promise.resolve().then(task).then(resolve, reject).finally(() => {
+                running--;
+                if (pending.length) pending.shift()();
+            });
+        };
+        if (running < limit) start();
+        else pending.push(start);
+    });
+}
+
 function planMedia(items, mode) {
     let unavailable = 0;
     const available = [];
@@ -192,6 +209,7 @@ async function main(argv = process.argv.slice(2)) {
     // page token and identical requests across concurrent Story targets.
     const cookie = args.inputJson ? '' : await readCookie(args);
     const sessions = new Map();
+    const scheduleDownload = createLimiter(args.concurrency);
     const resolved = await mapLimit(rawTargets, Math.min(3, args.concurrency), async (raw, targetIndex) => {
         let result;
         let providerId = 'instagram';
@@ -208,26 +226,26 @@ async function main(argv = process.argv.slice(2)) {
         }
         const mode = args.mode || (target?.type === 'post' || result.sourceType === 'post' ? MODES.AUTO : MODES.IMAGE);
         const { available, unavailable } = planMedia(result.items, mode);
-        return { target: raw, provider: providerId, mode, username: result.username, unavailable, available, saved: [], errors: [] };
+        const entry = { target: raw, provider: providerId, mode, username: result.username, unavailable, available, saved: [], errors: [] };
+        if (!args.urlOnly && !args.dryRun) {
+            // Start transferring as soon as this target resolves. Awaiting per target
+            // provides backpressure instead of accumulating expiring CDN links.
+            const downloaded = await Promise.all(available.map((asset) => scheduleDownload(async () => {
+                const outcome = await downloadMedia(asset.media, {
+                    username: entry.username, index: asset.info.index, output: args.output || '.',
+                });
+                return { ...asset.info, path: path.resolve(outcome.path), bytes: outcome.bytes, contentType: outcome.contentType };
+            }).then((value) => ({ ok: true, value }), (error) => ({ ok: false, error: error?.message || String(error) }))));
+            downloaded.forEach((result, index) => {
+                if (result.ok) entry.saved.push(result.value);
+                else entry.errors.push({ index: available[index].info.index, error: result.error });
+            });
+        }
+        return entry;
     });
 
     const successes = resolved.map((value, index) => value.ok ? { ...value.value, index } : null).filter(Boolean);
     const failures = resolved.map((value, index) => !value.ok ? { target: rawTargets[index], error: value.error } : null).filter(Boolean);
-    if (!args.urlOnly && !args.dryRun) {
-        // One global worker pool bounds total CDN transfers, even for large batches.
-        const queue = successes.flatMap((entry) => entry.available.map((asset) => ({ entry, asset })));
-        const downloaded = await mapLimit(queue, args.concurrency, async ({ entry, asset }) => {
-            const outcome = await downloadMedia(asset.media, {
-                username: entry.username, index: asset.info.index, output: args.output || '.',
-            });
-            return { ...asset.info, path: path.resolve(outcome.path), bytes: outcome.bytes, contentType: outcome.contentType };
-        });
-        downloaded.forEach((result, index) => {
-            const { entry, asset } = queue[index];
-            if (result.ok) entry.saved.push(result.value);
-            else entry.errors.push({ index: asset.info.index, error: result.error });
-        });
-    }
 
     if (args.json) {
         const toReport = (entry) => {
@@ -277,4 +295,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { parseArgs, loadTargets, planMedia, main, mapLimit };
+module.exports = { parseArgs, loadTargets, planMedia, main, mapLimit, createLimiter };
