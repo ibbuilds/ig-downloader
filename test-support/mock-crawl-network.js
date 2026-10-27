@@ -9,10 +9,10 @@ process.on('exit', () => {
 global.fetch = async (raw, opts = {}) => {
     const url = new URL(raw);
     calls.push({ host: url.hostname, path: url.pathname, cookie: opts.headers?.cookie || '' });
-    if (url.hostname !== 'gallery.example.org') throw Error('Unexpected outbound host ' + url.hostname);
+    if (!['gallery.example.org', 'cdn.assets.example.org'].includes(url.hostname)) throw Error('Unexpected outbound host ' + url.hostname);
     if (!url.pathname.endsWith('.jpg') && !url.pathname.endsWith('.mp4')) {
         let html = '';
-        if (url.pathname === '/root') html = '<img src="https://gallery.example.org/start.jpg"><a href="/child">Next</a><a href="https://evil.example.org/steal">Outside</a>';
+        if (url.pathname === '/root') html = '<img src="https://gallery.example.org/start.jpg"><a href="/child">Next</a><a href="https://cdn.assets.example.org/extra.jpg">Download</a><a href="https://evil.example.org/steal">Outside</a>';
         else if (url.pathname === '/child') html = '<meta property="og:video" content="https://gallery.example.org/clip.mp4"><a href="/grandchild">More</a>';
         else if (url.pathname === '/grandchild') html = '<img src="https://gallery.example.org/end.png">';
         else throw Error('Unexpected mock page ' + url.pathname);

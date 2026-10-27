@@ -9,23 +9,42 @@ const VIDEO_PATH = /\.(?:mp4|mov|webm)$/i;
 const AUDIO_PATH = /\.(?:mp3|m4a|ogg)$/i;
 const MAX_MEDIA = 500;
 
-/** Crawl navigational links only within the exact starting origin. */
+/** Minimal anchor URL extraction; no DOM execution or remote navigation. */
+function* anchorUrls(html, base) {
+    for (const tag of String(html).matchAll(/<a\b[^>]*>/gi)) {
+        const match = /\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(tag[0]);
+        if (!match) continue;
+        try {
+            const url = new URL(decodeHtml(match[1] ?? match[2] ?? match[3]), base);
+            url.hash = '';
+            yield validatePublicUrl(url.toString());
+        } catch { /* Ignore invalid and private links. */ }
+    }
+}
+
+/** Crawl page links on the exact origin; separately collect direct media links on public CDNs. */
 function pageLinks(html, base, origin, limit = 200) {
     const found = [];
     const seen = new Set();
-    for (const tag of String(html).matchAll(/<a\b[^>]*>/gi)) {
+    for (const link of anchorUrls(html, base)) {
         if (found.length >= limit) break;
-        const match = /\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(tag[0]);
-        if (!match) continue;
-        let url;
-        try {
-            url = new URL(decodeHtml(match[1] ?? match[2] ?? match[3]), base);
-            url.hash = '';
-            validatePublicUrl(url.toString());
-            if (url.origin !== origin || seen.has(url.href)) continue;
-        } catch { continue; }
-        seen.add(url.href);
-        found.push(url.href);
+        if (new URL(link).origin === origin && !seen.has(link)) {
+            found.push(link);
+            seen.add(link);
+        }
+    }
+    return found;
+}
+
+function mediaLinks(html, base, limit = 200) {
+    const found = [];
+    const seen = new Set();
+    for (const link of anchorUrls(html, base)) {
+        if (found.length >= limit) break;
+        if (MEDIA_PATH.test(new URL(link).pathname) && !seen.has(link)) {
+            found.push(link);
+            seen.add(link);
+        }
     }
     return found;
 }
@@ -65,7 +84,7 @@ async function crawlPublicSite(root, { fetchImpl = fetch, depth = 1, maxPages = 
         }
         const links = pageLinks(response.text, response.url, origin);
         // Direct file links on the crawled page count as media, not navigation.
-        for (const link of links) {
+        for (const link of mediaLinks(response.text, response.url)) {
             if (media.length >= MAX_MEDIA) break;
             const pathname = new URL(link).pathname;
             if (!MEDIA_PATH.test(pathname) || seenMedia.has(link)) continue;
@@ -93,4 +112,4 @@ async function crawlPublicSite(root, { fetchImpl = fetch, depth = 1, maxPages = 
         pagesVisited: visited.length };
 }
 
-module.exports = { pageLinks, crawlPublicSite };
+module.exports = { pageLinks, mediaLinks, crawlPublicSite };
