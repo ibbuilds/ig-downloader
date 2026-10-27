@@ -5,15 +5,18 @@
 
     function largest(candidates) {
         if (!Array.isArray(candidates)) return null;
-        return (
-            candidates
-                .filter((candidate) => candidate && typeof candidate.url === 'string' && candidate.url.startsWith('https://'))
-                .sort(
-                    (a, b) =>
-                        Number(b.width || 0) * Number(b.height || 0) -
-                        Number(a.width || 0) * Number(a.height || 0),
-                )[0] || null
-        );
+        let best = null;
+        let maxArea = -1;
+        for (const candidate of candidates) {
+            if (!candidate || typeof candidate.url !== 'string' || !candidate.url.startsWith('https://')) continue;
+            const area = Number(candidate.width || 0) * Number(candidate.height || 0);
+            const safeArea = Number.isFinite(area) ? area : 0;
+            if (best === null || safeArea > maxArea) {
+                best = candidate;
+                maxArea = safeArea;
+            }
+        }
+        return best;
     }
 
     function extensionFromUrl(url, fallback) {
@@ -32,7 +35,7 @@
      */
     function selectMedia(item, mode = MODES.AUTO) {
         if (!item || typeof item !== 'object') return null;
-        if (!Object.values(MODES).includes(mode)) throw new TypeError('Unknown media mode: ' + mode);
+        if (mode !== MODES.AUTO && mode !== MODES.IMAGE && mode !== MODES.VIDEO) throw new TypeError('Unknown media mode: ' + mode);
 
         const image = largest(item.image_versions2?.candidates);
         const video = largest(item.video_versions);
