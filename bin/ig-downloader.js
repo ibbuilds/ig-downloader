@@ -7,11 +7,12 @@ const { readCookie, getRawItemsFromResponse } = require('../lib/instagram.js');
 const { resolveTarget, PROVIDERS, loadPlugin } = require('../lib/providers.js');
 const { normalizeResource } = require('../core/provider.js');
 const { archiveKey, openArchive } = require('../core/archive.js');
+const { crawlPublicSite } = require('../core/crawl.js');
 const { downloadMedia } = require('../lib/download.js');
 const { MODES } = require('../shared/media.js');
 const { version } = require('../package.json');
 
-const COMMANDS = Object.freeze({ get: 'get', download: 'get', dl: 'get', urls: 'urls', url: 'urls', inspect: 'inspect', info: 'inspect', providers: 'providers', help: 'help' });
+const COMMANDS = Object.freeze({ get: 'get', download: 'get', dl: 'get', urls: 'urls', url: 'urls', inspect: 'inspect', info: 'inspect', providers: 'providers', help: 'help', crawl: 'crawl' });
 const MAX_TARGETS = 2000;
 const MAX_INPUT_BYTES = 2 * 1024 * 1024;
 const HELP = `sget / igd v${version} — modular media extraction (Node.js 20+)
@@ -25,6 +26,8 @@ Usage:
   sget -V URL                 Prefer video
   sget -f links.txt           Batch file
   sget -A URL                  Also scan visible page media tags
+  sget -r URL                  Crawl same-origin public HTML links
+  sget crawl URL -d2 -L20      Crawl to depth 2, up to 20 pages
   sget providers               List installed adapters
   cat links.txt | sget        Pipe targets from stdin
   sget --plugin ./adapter.js URL  Explicitly load a trusted provider
@@ -36,6 +39,9 @@ Options:
   -j 1..8                    Parallel downloads (default 4)
   -f FILE                    Newline-delimited targets (- for stdin)
   -s FILE                    Skip downloads already recorded in this archive
+  -r, --crawl                Follow same-origin HTML links (depth 1)
+  -d, --depth 0..2           Crawl link depth (default 1)
+  -L, --max-pages 1..20     Crawl page cap (default 10)
   -J                         JSON output
   -q                         Quiet output
   -A, --all                  Include page image/video tags (up to 200)
@@ -54,12 +60,13 @@ function parseArgs(argv) {
         '--cookie-file': 'cookieFile', '--input-json': 'inputJson',
         '--input-file': 'inputFile', '-f': 'inputFile',
         '--archive': 'archive', '-s': 'archive',
+        '--depth': 'depth', '-d': 'depth', '--max-pages': 'maxPages', '-L': 'maxPages',
         '--concurrency': 'concurrency', '-j': 'concurrency', '--plugin': 'plugin',
     };
     const toggles = {
         '--url-only': 'urlOnly', '-u': 'urlOnly', '--dry-run': 'dryRun', '-n': 'dryRun',
         '--json': 'json', '-J': 'json', '--quiet': 'quiet', '-q': 'quiet',
-        '--all': 'all', '-A': 'all',
+        '--all': 'all', '-A': 'all', '--crawl': 'crawl', '-r': 'crawl',
         '--help': 'help', '-h': 'help', '--version': 'version', '-v': 'version',
     };
     const quickModes = { '-a': MODES.AUTO, '-i': MODES.IMAGE, '-V': MODES.VIDEO };
@@ -112,9 +119,18 @@ function parseArgs(argv) {
         throw new Error('--input-json cannot be combined with URLs or --input-file.');
     }
     if (opts.command === 'urls') opts.urlOnly = true;
+    if (opts.command === 'crawl') opts.crawl = true;
     if (opts.command === 'inspect') opts.dryRun = true;
     if (opts.urlOnly && opts.dryRun) throw new Error('Choose either URLs or inspect, not both.');
     if (opts.archive && (opts.urlOnly || opts.dryRun)) throw new Error('--archive is only available when downloading.');
+    if (opts.crawl && opts.inputJson) throw new Error('Crawling cannot be combined with --input-json.');
+    if (!opts.crawl && (opts.depth !== undefined || opts.maxPages !== undefined)) throw new Error('Use -r/--crawl with --depth or --max-pages.');
+    if (opts.crawl) {
+        opts.depth = opts.depth === undefined ? 1 : Number(opts.depth);
+        opts.maxPages = opts.maxPages === undefined ? 10 : Number(opts.maxPages);
+        if (!Number.isInteger(opts.depth) || opts.depth < 0 || opts.depth > 2) throw new Error('Crawl depth must be 0..2.');
+        if (!Number.isInteger(opts.maxPages) || opts.maxPages < 1 || opts.maxPages > 20) throw new Error('Crawl page limit must be 1..20.');
+    }
     return opts;
 }
 
@@ -245,6 +261,7 @@ async function main(argv = process.argv.slice(2)) {
         return 0;
     }
     const rawTargets = args.inputJson ? [args.inputJson] : await loadTargets(args);
+    if (args.crawl && rawTargets.length > 10) throw new Error('Crawl mode is limited to 10 root URLs per invocation.');
     const parsed = args.inputJson ? null : rawTargets.map((raw) => {
         try {
             return { ok: true, ...resolveTarget(raw) };
@@ -291,7 +308,16 @@ async function main(argv = process.argv.slice(2)) {
         let result;
         let provider = PROVIDERS.instagram;
         let target = null;
-        if (args.inputJson) {
+        if (args.crawl) {
+            provider = PROVIDERS.web;
+            guard(provider);
+            try {
+                result = await crawlPublicSite(raw, { depth: args.depth, maxPages: args.maxPages });
+            } catch (error) {
+                noticeRateLimit(provider, error);
+                throw error;
+            }
+        } else if (args.inputJson) {
             result = await loadOffline(args.inputJson);
         } else {
             const source = parsed[targetIndex];

@@ -21,6 +21,7 @@ sget -u 'https://www.instagram.com/p/SHORTCODE/'
 sget -nJ 'https://www.instagram.com/p/SHORTCODE/'
 sget -f links.txt -o ./downloads -j4
 sget -f links.txt -s .sget-history    # resume later without duplicate downloads
+sget crawl https://example.org/gallery -d1 -L10  # public same-origin HTML crawl; no cookies
 sget -nJ 'https://www.reddit.com/r/pics/comments/POST_ID/title/'
 sget -A 'https://public.example.org/gallery'  # visible page assets; no JS rendering
 cat links.txt | sget
@@ -78,7 +79,7 @@ Core maintainers maintain common actions, contracts, URL safety and packaging. P
 | YouTube | Public progressive video with audio when directly exposed by player metadata; otherwise explicitly labeled poster | Experimental; many videos expose only adaptive/ciphered streams |
 | Other public HTTPS pages | Direct files, Open Graph and `-A` page media tag scan | Fallback; not a browser, crawler, or JavaScript renderer |
 
-Status is **not** a claim that a site's present-day endpoints are working. Automated provider CI uses synthetic fixtures. No recursive profile/playlist crawling, automatic DRM removal, YouTube adaptive-stream muxing or signature deciphering, or private-media bypass exists.
+Status is **not** a claim that a site's present-day endpoints are working. Automated provider CI uses synthetic fixtures. Only opt-in same-origin public HTML link crawling (up to 20 pages and depth 2) is supported, not platform-specific profile/playlist APIs; no automatic DRM removal, YouTube adaptive-stream muxing or signature deciphering, or private-media bypass exists.
 
 ### Authentication remains user-local
 
@@ -87,3 +88,7 @@ Do not put real accounts, cookies or private test targets into GitHub repository
 ## Limitations and licensing
 
 This project is independent of Instagram/Meta, Patreon and other platforms. Signed media URLs expire. Content permissions and applicable rights remain the user's responsibility. The CLI supports progressive media while the Instagram extension also includes its existing DASH muxing behavior. MIT license: see [LICENSE](LICENSE) for upstream attribution.
+
+### Bounded public HTML crawl
+
+Run `sget crawl URL` or `sget -r URL` to follow visible same-origin links and save media exposed in HTML, including linked files. `-d` limits link depth to 0–2 (default 1), and `-L` limits pages to 1–20 (default 10). A command accepts at most 10 crawl roots and 500 discovered resources per root. Requests use no account credentials and never follow page redirects outside the root origin. This is a lightweight static HTML crawler, **not** a JavaScript browser, a social network profile enumerator, or a DRM/access bypass. Honor each website’s policies and rate limits. Use `-nJ` to preview and `-s history` to avoid repeated completed downloads.
