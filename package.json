@@ -16,7 +16,8 @@
   },
   "scripts": {
     "test": "node --test tests/*.test.js",
-    "check": "npm test && npm run check:syntax",
-    "check:syntax": "node --check bin/ig-downloader.js && node --check lib/instagram.js && node --check lib/download.js && node --check shared/media.js"
+    "check": "npm test && npm run check:syntax && npm run check:extension",
+    "check:syntax": "node --check bin/ig-downloader.js && node --check lib/instagram.js && node --check lib/download.js && node --check shared/media.js && node --check lib/targets.js",
+    "check:extension": "node scripts/check-extension.js"
   }
 }
