@@ -137,3 +137,44 @@ test('CDN allowlist, filename sanitization and content MIME validation', () => {
         { isVideo: false },
     ), /Expected an image/);
 });
+
+test('largest candidate selection is stable, ignores unsafe URLs and does not mutate input', () => {
+    const { largest } = require('../shared/media.js');
+    const a = { url: 'https://scontent.cdninstagram.com/1.jpg', width: 300, height: 600 };
+    const b = { url: 'https://scontent.cdninstagram.com/2.jpg', width: 600, height: 300 };
+    const candidates = Object.freeze([{ url: 'http://example.com/unsafe', width: 5000, height: 5000 }, a, b]);
+    assert.equal(largest(candidates), a);
+    assert.deepEqual(candidates[1], a);
+    assert.equal(largest([]), null);
+    assert.equal(largest(null), null);
+});
+
+test('Instagram session caches concurrent Story queries but does not share account state globally', async () => {
+    const { createInstagramSession } = require('../lib/instagram.js');
+    const requests = [];
+    const fetchImpl = async (url, options = {}) => {
+        const name = new URLSearchParams(options.body || '').get('fb_api_req_friendly_name');
+        requests.push({ url, name, cookie: options.headers.cookie });
+        if (!options.method) return new Response('"DTSGInitialData",[],{"token":"dtsg"}');
+        if (name === 'PolarisSearchBoxRefetchableQuery') {
+            return Response.json({ data: { xdt_api__v1__fbsearch__topsearch_connection: {
+                users: [{ user: { username: 'example', id: '42' } }],
+            } } });
+        }
+        return Response.json({ data: { xdt_api__v1__feed__reels_media__connection: {
+            edges: [{ node: { user: { username: 'example' }, items: [storyVideo, { ...storyVideo, pk: '456' }] } }],
+        } } });
+    };
+    const session = createInstagramSession({ cookie: 'sessionid=A', fetchImpl });
+    const results = await Promise.all(['1234567890', '456'].map((id) =>
+        getInstagramItems({ type: 'story', username: 'example', id }, {
+            cookie: 'sessionid=A', fetchImpl, session,
+        }),
+    ));
+    assert.deepEqual(results.map((result) => result.items[0].pk), ['1234567890', '456']);
+    assert.equal(requests.length, 3, 'both targets should share homepage + search + Story payload');
+    assert.ok(requests.every((request) => request.cookie === 'sessionid=A'));
+    await assert.rejects(getInstagramItems({ type: 'story', username: 'example' }, {
+        cookie: 'sessionid=B', fetchImpl, session,
+    }), /same cookie/);
+});
