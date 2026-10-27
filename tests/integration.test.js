@@ -77,3 +77,22 @@ test('extension references valid local files and preserves upstream license', as
     assert.match(license, /MIT License/);
     assert.match(license, /HOAI AN LE/);
 });
+
+test('offline post fixtures default to auto, keeping video Posts as video', async (t) => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'igd-post-fixture-'));
+    t.after(() => fs.rm(root, { recursive: true, force: true }));
+    const jsonFile = path.join(root, 'post.json');
+    await fs.writeFile(jsonFile, JSON.stringify({
+        data: { xdt_api__v1__media__shortcode__web_info: { items: [{
+            media_type: 2, pk: '9876543210', user: { username: 'example' },
+            image_versions2: { candidates: [{ url: 'https://scontent.cdninstagram.com/post.jpg', width: 1080, height: 1920 }] },
+            video_versions: [{ url: 'https://video.fbcdn.net/video.mp4', width: 1080, height: 1920 }],
+        }] } },
+    }));
+    const result = spawnSync(process.execPath, [path.resolve('bin/ig-downloader.js'), '--input-json', jsonFile, '--dry-run', '--json'], { encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    const report = JSON.parse(result.stdout);
+    assert.equal(report.mode, 'auto');
+    assert.equal(report.media[0].sourceKind, 'video');
+    assert.equal(report.media[0].mediaType, 'video');
+});
