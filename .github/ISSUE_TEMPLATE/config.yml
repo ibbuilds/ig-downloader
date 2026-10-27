@@ -1,7 +1,8 @@
 blank_issues_enabled: false
-
 contact_links:
-    - name: 🗣 GitHub Discussions
-      url: https://github.com/HOAIAN2/Instagram-Downloader/discussions
-      about: >
-          Use Discussions for general questions, usage help, or topics that are not clearly bugs or feature requests.
+  - name: Contributor and provider documentation
+    url: https://github.com/ibbuilds/ig-downloader/blob/main/CONTRIBUTING.md
+    about: Development procedures, support scope, and provider contributions for this repository.
+  - name: Security reporting guidance
+    url: https://github.com/ibbuilds/ig-downloader/blob/main/SECURITY.md
+    about: Do not disclose credentials or vulnerabilities in public bug reports.

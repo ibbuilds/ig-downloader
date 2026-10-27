@@ -8,3 +8,5 @@ cookies.txt
 *.cookies.txt
 *.cookie
 release-note.md
+release-notes.md
+*.tgz
