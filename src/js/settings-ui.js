@@ -231,6 +231,27 @@
                         </div>
                     </section>
                     <section class="igd-settings-section">
+                        <h3>Story media format</h3>
+                        <p class="igd-settings-help">Image first saves the best available image resource. For video Stories this is a preview, not necessarily the original uploaded photograph.</p>
+                        <div class="igd-settings-options" role="radiogroup" aria-label="Story media format">
+                            <label class="igd-settings-option">
+                                <input type="radio" name="igd-story-media-mode" value="image">
+                                <span class="igd-settings-radio"></span>
+                                <span><strong>Image first (default)</strong><small>Save JPG/WebP preview; never silently save MP4</small></span>
+                            </label>
+                            <label class="igd-settings-option">
+                                <input type="radio" name="igd-story-media-mode" value="auto">
+                                <span class="igd-settings-radio"></span>
+                                <span><strong>Original type</strong><small>Image Stories as images; video Stories as videos</small></span>
+                            </label>
+                            <label class="igd-settings-option">
+                                <input type="radio" name="igd-story-media-mode" value="video">
+                                <span class="igd-settings-radio"></span>
+                                <span><strong>Prefer video</strong><small>Videos when available; images otherwise</small></span>
+                            </label>
+                        </div>
+                    </section>
+                    <section class="igd-settings-section">
                         <h3>Video download quality</h3>
                         <p class="igd-settings-help">Choose between Instagram's highest-quality stream and a more widely compatible video.</p>
                         <div class="igd-settings-options igd-settings-options-quality" role="radiogroup" aria-label="Video download quality">
@@ -322,6 +343,9 @@
         overlay.querySelectorAll('input[name="igd-download-ui-mode"]').forEach((input) => {
             input.addEventListener('change', () => downloadUiPreferences.setMode(input.value));
         });
+        overlay.querySelectorAll('input[name="igd-story-media-mode"]').forEach((input) => {
+            input.addEventListener('change', () => storyMediaPreferences.setMode(input.value));
+        });
         overlay.querySelectorAll('input[name="igd-video-download-mode"]').forEach((input) => {
             input.addEventListener('change', () => videoDownloadPreferences.setMode(input.value));
         });
@@ -346,6 +370,10 @@
             `input[name="igd-download-ui-mode"][value="${downloadUiPreferences.mode}"]`,
         );
         if (selectedUiMode) selectedUiMode.checked = true;
+        const selectedStoryMode = modal.querySelector(
+            `input[name="igd-story-media-mode"][value="${storyMediaPreferences.mode}"]`,
+        );
+        if (selectedStoryMode) selectedStoryMode.checked = true;
         const selectedVideoMode = modal.querySelector(
             `input[name="igd-video-download-mode"][value="${videoDownloadPreferences.mode}"]`,
         );

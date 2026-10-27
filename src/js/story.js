@@ -121,8 +121,16 @@ async function downloadStoryPhotos(type = 'stories') {
         media: [],
     };
     json.items.forEach((item) => {
-        const media = extractMediaData(item);
-        if (media) data.media.push(media);
+        const media = extractMediaData(item, storyMediaPreferences.mode);
+        if (media) {
+            data.media.push(media);
+        } else {
+            console.warn(
+                '[ig-downloader] Story has no downloadable resource for mode:',
+                storyMediaPreferences.mode,
+                item.pk,
+            );
+        }
     });
     return data;
 }

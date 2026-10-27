@@ -1,4 +1,10 @@
-*.json
-!manifest.json
-!.prettierrc.json
+node_modules/
+dist/
+coverage/
+*.log
+.env
+.env.*
+cookies.txt
+*.cookies.txt
+*.cookie
 release-note.md
