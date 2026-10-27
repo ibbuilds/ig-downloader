@@ -8,6 +8,8 @@ This is already a **public MIT-licensed project**. The core, CLI, SDK and Instag
 
 The npm `private` flag prevents accidental registry publication, not source access. No npm publication is claimed. Read [governance](GOVERNANCE.md), [security](SECURITY.md), and [release procedures](docs/releases.md).
 
+**Release readiness:** The core is offline/CI-tested, but production compatibility is not certified for all sites. See [the current project status and remaining release gates](docs/status.md).
+
 ## Install and use
 
 Use a maintained Node.js LTS release (24 recommended; 22 supported). Node 20 remains legacy-compatible, not security-supported. No third-party runtime packages.
@@ -23,7 +25,7 @@ sget -f links.txt -o ./downloads -j4
 sget -f links.txt -s .sget-history    # resume later without duplicate downloads
 sget crawl https://example.org/gallery -d1 -L10  # public same-origin HTML crawl; no cookies
 sget -nJ 'https://www.reddit.com/r/pics/comments/POST_ID/title/'
-sget -A 'https://public.example.org/gallery'  # visible page assets; no JS rendering
+sget -A 'https://public.example.org/gallery'  # responsive srcset/lazy images and video posters; no JS rendering
 cat links.txt | sget
 sget providers  # show installed adapters
 ```

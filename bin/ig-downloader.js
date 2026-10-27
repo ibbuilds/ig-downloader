@@ -199,14 +199,23 @@ async function mapLimit(items, limit, mapper) {
 
 /** FIFO semaphore: bound CDN traffic across target workers, without waiting for all target lookups. */
 function createLimiter(limit) {
+    if (!Number.isInteger(limit) || limit < 1) throw new RangeError('Concurrency must be a positive integer.');
     let running = 0;
     const pending = [];
+    let head = 0;
     return (task) => new Promise((resolve, reject) => {
         const start = () => {
             running++;
             Promise.resolve().then(task).then(resolve, reject).finally(() => {
                 running--;
-                if (pending.length) pending.shift()();
+                if (head < pending.length) {
+                    // Indexed FIFO: Array.shift() copies the remaining queue on
+                    // every completion; this is O(1) amortized per queued job.
+                    const next = pending[head];
+                    pending[head++] = undefined;
+                    if (head === pending.length) { pending.length = 0; head = 0; }
+                    next();
+                }
             });
         };
         if (running < limit) start();

@@ -33,6 +33,23 @@ function candidate(raw, base) {
     catch { return null; }
 }
 
+/** Choose one URL per responsive image instead of downloading every thumbnail. */
+function bestImageSrcset(raw, base) {
+    if (typeof raw !== 'string') return null;
+    let best = null;
+    let score = -1;
+    for (const part of raw.slice(0, 16384).split(',').slice(0, 64)) {
+        const match = /^(\S+)(?:\s+(\d+(?:\.\d+)?)([wx]))?$/.exec(part.trim());
+        if (!match) continue;
+        const url = candidate(match[1], base);
+        if (!url) continue;
+        const weight = match[2] ? Number(match[2]) : 1;
+        if (!Number.isFinite(weight) || weight <= 0) continue;
+        if (weight > score) { best = url; score = weight; }
+    }
+    return best;
+}
+
 function formatFromUrl(url, fallback) {
     try {
         const ext = new URL(url).pathname.match(/\.(jpe?g|png|webp|avif|heic|heif|gif|mp4|mov|webm|mp3|m4a|ogg)$/i)?.[1]?.toLowerCase();
@@ -74,11 +91,22 @@ function parsePageMedia(html, pageUrl, { all = false } = {}) {
     if (all) {
         for (const match of String(html).matchAll(/<(img|video|source)\b[^>]*>/gi)) {
             const attrs = attributes(match[0]);
-            const url = candidate(attrs.src, pageUrl);
+            const tag = match[1].toLowerCase();
+            const image = tag === 'img' || (tag === 'source' && /^image\//i.test(attrs.type || ''));
+            const video = tag === 'video' || /^video\//i.test(attrs.type || '');
+            if (tag === 'video') {
+                const poster = candidate(attrs.poster, pageUrl);
+                if (poster) add(poster, false, 'video-poster');
+            }
+            // data-src is the real image for common lazy loaders. Avoid taking
+            // the 1-pixel placeholder when the full image is available.
+            const url = image
+                ? bestImageSrcset(attrs.srcset || attrs['data-srcset'], pageUrl) ||
+                  candidate(attrs['data-src'], pageUrl) || candidate(attrs.src, pageUrl)
+                : candidate(attrs.src, pageUrl);
             if (!url) continue;
-            const video = match[1].toLowerCase() === 'video' || VIDEO_EXT.test(url);
-            if (video && VIDEO_EXT.test(url)) add(url, true, 'video');
-            else if (!video && IMAGE_EXT.test(url)) add(url, false, 'page-image');
+            if ((video || VIDEO_EXT.test(url)) && VIDEO_EXT.test(url)) add(url, true, 'video');
+            else if (image || (!video && IMAGE_EXT.test(url))) add(url, false, 'page-image');
         }
     }
     return tags;

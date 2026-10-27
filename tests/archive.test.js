@@ -85,3 +85,23 @@ test('CLI stores only successful resources and skips repeat downloads across run
     assert.equal((await fs.readdir(output)).length, 1);
     assert.match(await fs.readFile(archive, 'utf8'), /^[a-f0-9]{64}\n$/);
 });
+
+test('one failed transfer is shared by every concurrent duplicate, then a later attempt can retry', async (t) => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'sget-archive-failure-fanout-'));
+    t.after(() => fs.rm(root, { recursive: true, force: true }));
+    const file = path.join(root, 'history.txt');
+    const archive = await openArchive(file);
+    const key = archiveKey('example', SOURCE, MEDIA, 'auto');
+    let transfers = 0;
+    const results = await Promise.allSettled(Array.from({ length: 32 }, () => archive.run(key, async () => {
+        transfers++;
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        throw new Error('upstream unavailable');
+    })));
+    assert.equal(transfers, 1, 'concurrent failures must not fan out into multiple retries');
+    assert.ok(results.every((result) => result.status === 'rejected' && result.reason.message === 'upstream unavailable'));
+    assert.equal(archive.has(key), false);
+    assert.equal((await archive.run(key, async () => { transfers++; return 'retry succeeded'; })).value, 'retry succeeded');
+    assert.equal(transfers, 2);
+    assert.match(await fs.readFile(file, 'utf8'), /^[a-f0-9]{64}\n$/);
+});
