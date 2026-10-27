@@ -27,3 +27,7 @@ This project maintains a small, stable **extraction core** and provides procedur
 Provider READMEs declare one of `maintained`, `experimental`, `broken` or `unmaintained`. Community members can repair their own providers by PR. Core maintainers review the stable interface, security and release process, not perpetual support for every site.
 
 Read [provider-development](docs/provider-development.md), [architecture](docs/architecture.md), and [runtime decision](docs/adr/0001-runtime.md) before implementing a new provider.
+
+## Open-source and release review
+
+All contributions remain MIT-licensed; retain upstream and vendored notices. Run `npm run check:package` after changing runtime files, assets or the package allowlist. Review GOVERNANCE.md, SECURITY.md and docs/releases.md. Public PRs must never need session secrets. Repository feature settings are separate from committed templates; see docs/repository-independence.md.

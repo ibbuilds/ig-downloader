@@ -1,5 +1,11 @@
-# Request core security and CI review; provider-specific maintainers can contribute via PR.
+# Review requests are not branch protection; enforce approvals in repository rules.
 /core/ @ibbuilds
 /lib/download.js @ibbuilds
-/.github/workflows/ @ibbuilds
+/.github/ @ibbuilds
 /bin/ @ibbuilds
+/scripts/package*.js @ibbuilds
+/scripts/check-package.js @ibbuilds
+/scripts/check-release-version.js @ibbuilds
+/LICENSE @ibbuilds
+/THIRD_PARTY_NOTICES.md @ibbuilds
+/SECURITY.md @ibbuilds

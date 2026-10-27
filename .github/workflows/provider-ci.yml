@@ -6,8 +6,9 @@ on:
     paths:
       - 'providers/**'
       - 'core/**'
-      - 'lib/providers.js'
-      - 'lib/download.js'
+      - 'lib/**'
+      - 'shared/**'
+      - 'package.json'
       - 'tests/providers/**'
       - 'scripts/check-providers.js'
       - '.github/workflows/provider-ci.yml'
@@ -16,8 +17,9 @@ on:
     paths:
       - 'providers/**'
       - 'core/**'
-      - 'lib/providers.js'
-      - 'lib/download.js'
+      - 'lib/**'
+      - 'shared/**'
+      - 'package.json'
       - 'tests/providers/**'
       - 'scripts/check-providers.js'
       - '.github/workflows/provider-ci.yml'
@@ -32,7 +34,9 @@ jobs:
     outputs:
       matrix: ${{ steps.providers.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
       - id: providers
         run: echo "matrix=$(node scripts/check-providers.js --matrix)" >> "$GITHUB_OUTPUT"
 
@@ -45,8 +49,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          node-version: 22
-      - run: node scripts/check-providers.js --check "${{ matrix.provider }}"
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: node scripts/check-providers.js --check "$PROVIDER_ID"
+        env:
+          PROVIDER_ID: ${{ matrix.provider }}

@@ -1,0 +1,43 @@
+name: Provider failure
+description: Report a source-specific extraction problem without exposing credentials.
+title: "[provider] "
+body:
+  - type: input
+    id: provider
+    attributes:
+      label: Provider and affected content type
+      placeholder: instagram / Story or Reel
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: CLI version or commit, Node version, OS
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Sanitized reproduction and expected result
+      description: Never paste cookies, session tokens, private post URLs or signed CDN URLs.
+    validations:
+      required: true
+  - type: dropdown
+    id: evidence
+    attributes:
+      label: Where does the failure occur?
+      options:
+        - Offline fixture test
+        - Live metadata extraction
+        - CDN transfer
+        - Browser extension
+        - Not yet isolated
+    validations:
+      required: true
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy
+      options:
+        - label: I removed credentials and private media identifiers from this report.
+          required: true
