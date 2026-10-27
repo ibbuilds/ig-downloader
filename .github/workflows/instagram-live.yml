@@ -1,9 +1,14 @@
-name: instagram live resolution
+name: Instagram public live resolution
 
 on:
   schedule:
     - cron: '17 7 * * 3'
   workflow_dispatch:
+    inputs:
+      public_url:
+        description: 'Public Instagram post/Story test URL (no private IDs or signed media links)'
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -12,11 +17,11 @@ jobs:
   configuration:
     runs-on: ubuntu-latest
     steps:
-      - run: echo 'Live check requires IGD_INSTAGRAM_TEST_URL; an unconfigured live job is skipped, not verified.'
+      - run: echo 'An unconfigured public live source is NOT verified.'
 
   live:
-    name: instagram / Live
-    if: ${{ vars.IGD_INSTAGRAM_TEST_URL != '' }}
+    name: instagram / Live (public only)
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.public_url != '') || vars.SGET_INSTAGRAM_PUBLIC_TEST_URL != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
@@ -29,5 +34,4 @@ jobs:
           package-manager-cache: false
       - run: node scripts/check-provider-live.js instagram
         env:
-          IGD_LIVE_URL: ${{ vars.IGD_INSTAGRAM_TEST_URL }}
-          IG_COOKIE: ${{ secrets.IGD_INSTAGRAM_COOKIE }}
+          IGD_LIVE_URL: ${{ inputs.public_url || vars.SGET_INSTAGRAM_PUBLIC_TEST_URL }}

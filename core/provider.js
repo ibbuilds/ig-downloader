@@ -16,6 +16,9 @@ function assertProvider(provider) {
             throw new TypeError(`Provider ${provider.id} requires ${method}().`);
         }
     }
+    if (provider.fallback !== undefined && typeof provider.fallback !== 'boolean') {
+        throw new TypeError(`Provider ${provider.id} fallback must be boolean.`);
+    }
     if (provider.createSession !== undefined && typeof provider.createSession !== 'function') {
         throw new TypeError(`Provider ${provider.id} createSession must be a function.`);
     }
@@ -32,13 +35,15 @@ function createRegistry(initialProviders = []) {
     }
     function resolveTarget(raw) {
         const matches = [...providers.values()].filter((provider) => provider.match(raw));
-        if (matches.length > 1) throw new Error('Ambiguous URL: multiple providers matched this target.');
+        const specialized = matches.filter((provider) => !provider.fallback);
+        const chosen = specialized.length ? specialized : matches;
+        if (chosen.length > 1) throw new Error('Ambiguous URL: multiple providers matched this target.');
         if (!matches.length) {
             let detail = '';
             try { detail = new URL(raw).hostname; } catch { /* bare usernames are provider-specific */ }
             throw new Error(`Unsupported provider or target${detail ? ` (${detail})` : ''}. Install an adapter to support it.`);
         }
-        return { provider: matches[0], target: matches[0].parse(raw) };
+        return { provider: chosen[0], target: chosen[0].parse(raw) };
     }
     for (const provider of initialProviders) register(provider);
     return Object.freeze({ register, resolveTarget, get: (id) => providers.get(id), list: () => [...providers.values()] });
@@ -52,6 +57,9 @@ function normalizeResource(media) {
     try { url = new URL(media.url); } catch { throw new TypeError('Provider resource has an invalid URL.'); }
     if (url.protocol !== 'https:' || url.username || url.password) {
         throw new TypeError('Provider resource requires HTTPS without embedded credentials.');
+    }
+    if (media.kind !== undefined && !['image', 'video', 'audio'].includes(media.kind)) {
+        throw new TypeError('Provider resource has unsupported kind.');
     }
     if (typeof media.isVideo !== 'boolean') throw new TypeError('Provider resource requires isVideo boolean.');
     if (typeof media.sourceKind !== 'string' || !media.sourceKind) {

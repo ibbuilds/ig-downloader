@@ -1,9 +1,14 @@
-name: __ID__ live resolution
+name: __ID__ public live resolution
 
 on:
   schedule:
     - cron: '17 7 * * 3'
   workflow_dispatch:
+    inputs:
+      public_url:
+        description: 'Public URL, never a private or signed media URL'
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -12,11 +17,11 @@ jobs:
   configuration:
     runs-on: ubuntu-latest
     steps:
-      - run: echo 'Live check requires IGD___ENV___TEST_URL; an unconfigured live job is skipped, not verified.'
+      - run: echo 'An unconfigured public live source is NOT verified.'
 
   live:
-    name: __ID__ / Live
-    if: ${{ vars.IGD___ENV___TEST_URL != '' }}
+    name: __ID__ / Live (public only)
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.public_url != '') || vars.SGET___ENV___PUBLIC_TEST_URL != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
@@ -29,5 +34,4 @@ jobs:
           package-manager-cache: false
       - run: node scripts/check-provider-live.js __ID__
         env:
-          IGD_LIVE_URL: ${{ vars.IGD___ENV___TEST_URL }}
-          IG_COOKIE: ${{ secrets.IGD___ENV___COOKIE }}
+          IGD_LIVE_URL: ${{ inputs.public_url || vars.SGET___ENV___PUBLIC_TEST_URL }}

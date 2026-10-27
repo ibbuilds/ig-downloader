@@ -12,6 +12,7 @@ const { version } = require('../package.json');
 
 const COMMANDS = Object.freeze({ get: 'get', download: 'get', dl: 'get', urls: 'urls', url: 'urls', inspect: 'inspect', info: 'inspect', providers: 'providers', help: 'help' });
 const MAX_TARGETS = 2000;
+const MAX_INPUT_BYTES = 2 * 1024 * 1024;
 const HELP = `sget / igd v${version} — modular media extraction (Node.js 20+)
 
 Usage:
@@ -22,6 +23,7 @@ Usage:
   sget -i URL                 Images only
   sget -V URL                 Prefer video
   sget -f links.txt           Batch file
+  sget -A URL                  Also capture visible image/video tags
   cat links.txt | sget        Pipe targets from stdin
   sget --plugin ./adapter.js URL  Explicitly load a trusted provider
 
@@ -33,6 +35,7 @@ Options:
   -f FILE                    Newline-delimited targets (- for stdin)
   -J                         JSON output
   -q                         Quiet output
+  -A, --all                  Include page image/video tags (up to 200)
       --plugin MODULE        Opt-in third-party provider (executes its code)
   -h / -v                    Help / version
 
@@ -52,6 +55,7 @@ function parseArgs(argv) {
     const toggles = {
         '--url-only': 'urlOnly', '-u': 'urlOnly', '--dry-run': 'dryRun', '-n': 'dryRun',
         '--json': 'json', '-J': 'json', '--quiet': 'quiet', '-q': 'quiet',
+        '--all': 'all', '-A': 'all',
         '--help': 'help', '-h': 'help', '--version': 'version', '-v': 'version',
     };
     const quickModes = { '-a': MODES.AUTO, '-i': MODES.IMAGE, '-V': MODES.VIDEO };
@@ -119,11 +123,21 @@ async function loadTargets(args, stdin = process.stdin) {
     };
     let stdinContent;
     async function readSource(filename) {
-        if (filename !== '-') return fs.readFile(filename, 'utf8');
+        if (filename !== '-') {
+            const stat = await fs.stat(filename);
+            if (stat.size > MAX_INPUT_BYTES) throw new Error('Input list exceeds the 2 MB safety limit.');
+            return fs.readFile(filename, 'utf8');
+        }
         if (stdinContent !== undefined) return stdinContent;
         const chunks = [];
-        for await (const chunk of stdin) chunks.push(chunk);
-        stdinContent = Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))).toString('utf8');
+        let size = 0;
+        for await (const chunk of stdin) {
+            const buffer = Buffer.from(chunk);
+            size += buffer.byteLength;
+            if (size > MAX_INPUT_BYTES) throw new Error('Input list exceeds the 2 MB safety limit.');
+            chunks.push(buffer);
+        }
+        stdinContent = Buffer.concat(chunks, size).toString('utf8');
         return stdinContent;
     }
     for (const target of args.positional) {
@@ -193,7 +207,7 @@ function planMedia(items, mode, provider = PROVIDERS.instagram) {
             index,
             id: media.id,
             url: media.url,
-            mediaType: media.isVideo ? 'video' : 'image',
+            mediaType: media.kind || (media.isVideo ? 'video' : 'image'),
             sourceKind: media.sourceKind,
             resolution: media.width && media.height ? `${media.width}x${media.height}` : null,
             format: media.format,
@@ -233,9 +247,26 @@ async function main(argv = process.argv.slice(2)) {
             return { ok: false, error: error.message };
         }
     });
-    // Authentication is loaded once. A command-scoped session shares the home
-    // page token and identical requests across concurrent Story targets.
-    const cookie = args.inputJson ? '' : await readCookie(args);
+    // Secrets are user-local and per-provider. Never forward IG_COOKIE to an
+    // unrelated provider or a third-party plugin through a mixed URL batch.
+    const credentials = new Map();
+    async function cookieFor(provider) {
+        if (credentials.has(provider.id)) return credentials.get(provider.id);
+        let cookie = '';
+        if (provider.id === 'instagram') cookie = await readCookie(args);
+        else if (provider.id !== 'web') {
+            const envKey = `SGET_COOKIE_${provider.id.toUpperCase().replace(/-/g, '_')}`;
+            cookie = process.env[envKey] || '';
+            if (args.cookieFile) {
+                const active = new Set(parsed.filter((item) => item.ok).map((item) => item.provider.id));
+                if (active.size !== 1) throw new Error('--cookie-file is ambiguous for mixed providers; use separate provider-specific environment variables.');
+                cookie = (await fs.readFile(args.cookieFile, 'utf8')).trim().replace(/^Cookie:\s*/i, '');
+                if (cookie.includes('\n') || cookie.includes('\r')) throw new Error('Non-Instagram cookies must be a single raw Cookie header.');
+            }
+        }
+        credentials.set(provider.id, cookie);
+        return cookie;
+    }
     const sessions = new Map();
     const scheduleDownload = createLimiter(args.concurrency);
     const resolved = await mapLimit(rawTargets, Math.min(3, args.concurrency), async (raw, targetIndex) => {
@@ -249,8 +280,9 @@ async function main(argv = process.argv.slice(2)) {
             if (!source.ok) throw new Error(source.error);
             provider = source.provider;
             target = source.target;
+            const cookie = await cookieFor(provider);
             if (!sessions.has(provider.id)) sessions.set(provider.id, provider.createSession?.({ cookie }) || {});
-            result = await provider.resolve(target, { cookie, session: sessions.get(provider.id) });
+            result = await provider.resolve(target, { cookie, session: sessions.get(provider.id), all: Boolean(args.all) });
         }
         const mode = args.mode || (provider.id !== 'instagram' || target?.type === 'post' || result.sourceType === 'post' ? MODES.AUTO : MODES.IMAGE);
         const { available, unavailable } = planMedia(result.items, mode, provider);

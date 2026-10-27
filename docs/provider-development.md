@@ -51,3 +51,7 @@ sget --plugin ./my-provider.js 'https://site.example/post/123'
 ```
 
 Third-party plugins run arbitrary code within the CLI process. This command is a trust decision. We do not automatically discover or execute packages from the internet.
+
+## User-controlled session inputs
+
+Session information belongs on the user device, not in public source, repository Actions or issue fixtures. Built-in non-Instagram site adapters read a locally set `SGET_COOKIE_PROVIDER` value (e.g. `SGET_COOKIE_FACEBOOK`) or a single-provider `--cookie-file` with a raw Cookie header. The Reddit adapter can use user-local `SGET_REDDIT_TOKEN` when OAuth is available. Instagram still supports `IG_COOKIE`. Never embed credentials in adapters, template files, PRs or CI workflows. Public metadata is often all that can be extracted without a logged-in session.

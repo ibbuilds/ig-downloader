@@ -1,8 +1,8 @@
 {
   "name": "ig-downloader",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
-  "description": "Lightweight modular social-media resource extraction CLI and Instagram browser extension",
+  "description": "Sget: lightweight link-to-media extraction engine with independent source adapters",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -19,7 +19,7 @@
   "scripts": {
     "test": "node scripts/run-tests.js",
     "check": "npm test && npm run check:syntax && npm run check:extension",
-    "check:syntax": "node --check bin/ig-downloader.js && node --check lib/instagram.js && node --check lib/download.js && node --check shared/media.js && node --check lib/targets.js && node --check lib/providers.js && node --check core/provider.js && node --check core/url-policy.js && node --check providers/instagram/index.js && node --check scripts/check-providers.js && node --check scripts/check-provider-live.js && node --check scripts/create-provider.js",
+    "check:syntax": "node --check bin/ig-downloader.js && node --check lib/instagram.js && node --check lib/download.js && node --check shared/media.js && node --check lib/targets.js && node --check lib/providers.js && node --check core/provider.js && node --check core/url-policy.js && node --check providers/instagram/index.js && node --check scripts/check-providers.js && node --check scripts/check-provider-live.js && node --check scripts/create-provider.js && node --check core/public-http.js && node --check core/page-media.js && node --check core/site-provider.js && node --check providers/reddit/index.js && node --check providers/facebook/index.js && node --check providers/tiktok/index.js && node --check providers/twitter/index.js && node --check providers/pinterest/index.js && node --check providers/web/index.js",
     "check:extension": "node scripts/check-extension.js",
     "check:providers": "node scripts/check-providers.js --all",
     "check:provider": "node scripts/check-providers.js --check",
