@@ -28,10 +28,11 @@ test('specialized site adapters outrank web fallback and reject unsupported/priv
         'https://www.pinterest.com/pin/42': 'pinterest',
         'https://www.instagram.com/p/ABC123': 'instagram',
         'https://www.youtube.com/watch?v=a': 'web',
+        'https://www.youtube.com/watch?v=dQw4w9WgXcQ': 'youtube',
         'https://any.example.org/picture.jpg': 'web',
     };
     for (const [url, id] of Object.entries(pairs)) assert.equal(resolveTarget(url).provider.id, id, url);
-    assert.deepEqual(Object.keys(PROVIDERS), ['instagram', 'reddit', 'facebook', 'tiktok', 'twitter', 'pinterest', 'web']);
+    assert.deepEqual(Object.keys(PROVIDERS), ['instagram', 'reddit', 'facebook', 'tiktok', 'twitter', 'pinterest', 'youtube', 'web']);
     assert.throws(() => resolveTarget('https://localhost/photo.jpg'), /Unsupported provider/);
     assert.throws(() => validatePublicUrl('https://192.168.1.1/image.png'), /Refusing/);
     assert.throws(() => validatePublicUrl('https://user:pass@news.example.org/'), /Refusing/);

@@ -4,7 +4,7 @@
 
 This is a public, MIT-licensed, independently developed resource extraction engine. The repository owner `@ibbuilds` is the current core maintainer. The repository URL and Git history are kept intact; GitHub fork-network status is a separate administrative property.
 
-The core maintainer owns the CLI, provider contract, security policies, packaging, CI and compatibility. Provider contributors own site-specific behavior. Accepting a provider does not promise perpetual compatibility with that website. Instagram is the maintained reference provider; Reddit, Facebook, TikTok, X/Twitter, Pinterest, and public web fallback are experimental built-ins. Their presence is not a promise of perpetual compatibility.
+The core maintainer owns the CLI, provider contract, security policies, packaging, CI and compatibility. Provider contributors own site-specific behavior. Accepting a provider does not promise perpetual compatibility with that website. Instagram is the maintained reference provider; Reddit, Facebook, TikTok, X/Twitter, Pinterest, YouTube, and public web fallback are experimental built-ins. Their presence is not a promise of perpetual compatibility.
 
 ## Decisions and changes
 
