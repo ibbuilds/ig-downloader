@@ -22,7 +22,7 @@ This project maintains a small, stable **extraction core** and provides procedur
 
 ## Maintenance and CI
 
-`CI` reports core/CLI/extension stability. `Provider checks` reports each site's offline regression tests separately. Each provider has a scheduled/manual `<id>-live.yml` that **skips** when no test URL is configured, rather than presenting fake success. Live credentials never run in untrusted PR workflows.
+`CI` reports core/CLI/extension stability. `Provider checks` reports each site's offline regression tests separately. Each provider has a scheduled/manual `<id>-live.yml` that **skips** when no test URL is configured, rather than presenting fake success. The repository live workflows accept only public sample URLs, with no private account credentials. Contributors perform any authenticated tests on their own machines; private sessions must never enter repository settings, PR workflows, or fixtures.
 
 Provider READMEs declare one of `maintained`, `experimental`, `broken` or `unmaintained`. Community members can repair their own providers by PR. Core maintainers review the stable interface, security and release process, not perpetual support for every site.
 

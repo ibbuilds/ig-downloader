@@ -7,6 +7,7 @@ global.fetch = async (url, options = {}) => {
     const host = new URL(url).hostname;
     const cookie = options.headers?.cookie || '';
     calls.push({ host, cookie, path: new URL(url).pathname });
+    if (host === 'www.facebook.com' && new URL(url).pathname.includes('rate-limited')) return new Response('Please slow down', { status: 429 });
     if (host === 'www.facebook.com') return new Response('<meta property="og:image" content="https://scontent.xx.fbcdn.net/poster.jpg">', { headers: { 'content-type': 'text/html' } });
     if (host === 'www.instagram.com' && !options.method) return new Response('"DTSGInitialData",[],{"token":"test"}', { headers: { 'content-type': 'text/html' } });
     if (host === 'www.instagram.com' && options.method === 'POST') return Response.json({ data: {

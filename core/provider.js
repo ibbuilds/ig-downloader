@@ -62,6 +62,9 @@ function normalizeResource(media) {
         throw new TypeError('Provider resource has unsupported kind.');
     }
     if (typeof media.isVideo !== 'boolean') throw new TypeError('Provider resource requires isVideo boolean.');
+    if (media.kind && (media.kind === 'video') !== media.isVideo) {
+        throw new TypeError('Provider resource kind must agree with isVideo.');
+    }
     if (typeof media.sourceKind !== 'string' || !media.sourceKind) {
         throw new TypeError('Provider resource requires sourceKind provenance.');
     }

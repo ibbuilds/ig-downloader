@@ -45,7 +45,7 @@ The concrete interface is documented in `types/provider.d.ts`. We use CommonJS a
 
 - `CI`: core cross-platform checks for Node 20/22/24 plus extension asset/syntax checks.
 - `Provider checks`: separate matrix jobs such as `Provider / instagram`. New built-ins are discovered from the registry; one adapter failure does not cancel others.
-- `<provider> live resolution`: weekly plus manual checks using a configured public/sample target URL and an optional authenticated session. **Skipped means unconfigured**, not passing. These checks validate current resolution and selected URLs, not complete downloaded bytes.
+- `<provider> live resolution`: weekly and manual **public-only** checks. No repository credentials or private test URLs are required. **Skipped means unconfigured**, not passing. Authentication-dependent checks belong on the end user’s machine. These checks validate current resource selection, not complete downloaded bytes.
 - `Release`: packaging/version checks. Live checks are *not* run with secrets on untrusted pull requests.
 
 ## What is not implemented

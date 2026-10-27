@@ -41,3 +41,15 @@ test('reddit: when anonymous JSON is denied, uses explicitly labeled public prev
     });
     assert.equal(result.items[0].sourceKind, 'preview-image');
 });
+
+
+test('reddit: direct MP4 links are classified as videos, not images', async () => {
+    const result = await provider.resolve(provider.parse('https://redd.it/abc12'), {
+        fetchImpl: async () => Response.json(mockPost({
+            id: 'abc12', author: 'user', url_overridden_by_dest: 'https://i.imgur.com/clip.mp4',
+        })),
+    });
+    assert.equal(result.items.length, 1);
+    assert.equal(result.items[0].isVideo, true);
+    assert.equal(result.items[0].sourceKind, 'video');
+});

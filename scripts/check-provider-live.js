@@ -29,6 +29,12 @@ async function main() {
 }
 
 main().catch((error) => {
-    console.error('Provider live check failed: ' + error.message);
+    const reason = String(error?.message || '');
+    const category = /429|rate.?limit/i.test(reason) ? 'rate-limited' :
+        /401|403|authentication|access denied/i.test(reason) ? 'access-denied' :
+        /404|not found|expired/i.test(reason) ? 'unavailable-content' :
+        /fetch failed|timeout|network|abort/i.test(reason) ? 'network-error' : 'extractor-error';
+    // Error text can contain private post IDs or signed URLs; never print it in CI.
+    console.error('Provider live check failed (' + category + ').');
     process.exitCode = 1;
 });
