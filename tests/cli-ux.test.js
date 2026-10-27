@@ -1,0 +1,144 @@
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs/promises');
+const os = require('node:os');
+const path = require('node:path');
+const { Readable } = require('node:stream');
+const { spawnSync } = require('node:child_process');
+const { parseArgs, loadTargets, mapLimit } = require('../bin/ig-downloader.js');
+const { resolveTarget, PROVIDERS } = require('../lib/providers.js');
+const { createInstagramSession, getInstagramItems } = require('../lib/instagram.js');
+
+const CLI = path.resolve('bin/ig-downloader.js');
+
+const item = (pk) => ({
+    pk,
+    media_type: 1,
+    image_versions2: { candidates: [{ url: `https://scontent.cdninstagram.com/${pk}.jpg`, width: 1080, height: 1920 }] },
+});
+
+test('igd alias and subcommands retain backwards compatible CLI', () => {
+    const pkg = require('../package.json');
+    assert.equal(pkg.bin.igd, pkg.bin['ig-downloader']);
+    assert.equal(parseArgs(['get', '@example']).command, 'get');
+    assert.equal(parseArgs(['urls', '@example']).urlOnly, true);
+    assert.equal(parseArgs(['inspect', '@example']).dryRun, true);
+    assert.equal(parseArgs(['@example', '-o', 'media', '-m', 'auto', '-j', '8']).concurrency, 8);
+    assert.throws(() => parseArgs(['-j', '9']), /Concurrency/);
+    assert.throws(() => parseArgs(['--url-only', '--dry-run', 'https://www.instagram.com/p/abc']), /either/);
+    assert.throws(() => parseArgs(['--input-json', 'fixture.json', '-f', 'links.txt']), /cannot be combined/);
+    const help = spawnSync(process.execPath, [CLI, '--help'], { encoding: 'utf8' });
+    assert.equal(help.status, 0);
+    assert.match(help.stdout, /igd/);
+    const sites = spawnSync(process.execPath, [CLI, 'providers', '--json'], { encoding: 'utf8' });
+    assert.equal(sites.status, 0);
+    assert.deepEqual(JSON.parse(sites.stdout), { supported: ['instagram'] });
+});
+
+test('batch target input supports comments, files, stdin and stable deduplication', async (t) => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'igd-targets-'));
+    t.after(() => fs.rm(root, { recursive: true, force: true }));
+    const file = path.join(root, 'links.txt');
+    await fs.writeFile(file, '# comments ignored\n@foo\n@bar\n@foo\n');
+    const args = parseArgs(['get', '@bar', '-f', file, '-']);
+    const urls = await loadTargets(args, Readable.from(['# another comment\n@baz\n@foo\n']));
+    assert.deepEqual(urls, ['@bar', '@baz', '@foo']); // stdin is processed at positional position
+    assert.deepEqual(Object.keys(PROVIDERS), ['instagram']);
+    assert.equal(resolveTarget('@test').provider.id, 'instagram');
+    assert.throws(() => resolveTarget('https://www.patreon.com/creator'), /Unsupported provider/);
+});
+
+test('global pool does not exceed requested concurrency and preserves result order', async () => {
+    let active = 0;
+    let peak = 0;
+    const jobs = Array.from({ length: 18 }, (_, i) => i);
+    const values = await mapLimit(jobs, 3, async (i) => {
+        active++;
+        peak = Math.max(peak, active);
+        await new Promise((resolve) => setTimeout(resolve, (18 - i) % 4));
+        active--;
+        if (i === 7) throw new Error('expected failure');
+        return i * 2;
+    });
+    assert.equal(peak, 3);
+    assert.deepEqual(values[0], { ok: true, value: 0 });
+    assert.deepEqual(values[7], { ok: false, error: 'expected failure' });
+    assert.deepEqual(values[17], { ok: true, value: 34 });
+});
+
+test('command-scoped Instagram session shares homepage, search and Story GraphQL results', async () => {
+    const calls = [];
+    const fetchImpl = async (url, options = {}) => {
+        calls.push({ url, name: new URLSearchParams(options.body || '').get('fb_api_req_friendly_name') });
+        if (!options.method) return new Response('"DTSGInitialData",[],{"token":"test"}');
+        if (calls.at(-1).name === 'PolarisSearchBoxRefetchableQuery') {
+            return Response.json({ data: { xdt_api__v1__fbsearch__topsearch_connection: { users: [{ user: { username: 'example', id: '42' } }] } } });
+        }
+        return Response.json({ data: { xdt_api__v1__feed__reels_media__connection: {
+            edges: [{ node: { user: { username: 'example' }, items: [item('100'), item('200')] } }],
+        } } });
+    };
+    const session = createInstagramSession({ cookie: 'sessionid=test', fetchImpl });
+    const inputs = ['100', '200', '100'];
+    const results = await Promise.all(inputs.map((id) => getInstagramItems(
+        { type: 'story', username: 'example', id }, { cookie: 'sessionid=test', fetchImpl, session },
+    )));
+    assert.deepEqual(results.map((r) => r.items[0].pk), inputs);
+    assert.equal(calls.length, 3); // homepage + username + Story payload, not 9 requests
+    assert.equal(calls.filter((c) => !c.name).length, 1);
+});
+
+test('JSON modes print structured metadata without downloading from CDN', async (t) => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'igd-json-'));
+    t.after(() => fs.rm(root, { recursive: true, force: true }));
+    const file = path.join(root, 'response.json');
+    await fs.writeFile(file, JSON.stringify({ user: { username: 'example' }, items: [item('100')] }));
+    for (const command of ['urls', 'inspect']) {
+        const run = spawnSync(process.execPath, [CLI, command, '--input-json', file, '--json'], { encoding: 'utf8' });
+        assert.equal(run.status, 0, run.stderr);
+        const report = JSON.parse(run.stdout);
+        assert.equal(report.media[0].sourceKind, 'image');
+        assert.equal(report.media[0].url, 'https://scontent.cdninstagram.com/100.jpg');
+        assert.deepEqual(await fs.readdir(root), ['response.json']);
+    }
+});
+
+test('full CLI batch shares requests and downloads two different Stories', async (t) => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'igd-batch-'));
+    t.after(() => fs.rm(root, { recursive: true, force: true }));
+    const log = path.join(root, 'calls.json');
+    const output = path.join(root, 'media');
+    const proc = spawnSync(process.execPath, [
+        '--require', path.resolve('test-support/mock-instagram-network.js'), CLI,
+        'get', 'https://www.instagram.com/stories/example/100/',
+        'https://www.instagram.com/stories/example/200/', '--json', '-j', '4', '-o', output,
+    ], { encoding: 'utf8', env: { ...process.env, IGD_FIXTURE_LOG: log } });
+    assert.equal(proc.status, 0, proc.stderr);
+    const report = JSON.parse(proc.stdout);
+    assert.equal(report.version, 1);
+    assert.equal(report.results.length, 2);
+    assert.deepEqual(report.errors, []);
+    assert.deepEqual(report.results.map((entry) => entry.saved[0].id), ['100', '200']);
+    const names = await fs.readdir(output);
+    assert.equal(names.length, 2);
+    const calls = JSON.parse(await fs.readFile(log, 'utf8'));
+    assert.equal(calls.filter((entry) => entry.host === 'www.instagram.com').length, 3);
+    assert.equal(calls.filter((entry) => entry.host === 'scontent.cdninstagram.com').length, 2);
+});
+
+test('batch reports partial success and unsupported providers without aborting', async (t) => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'igd-partial-'));
+    t.after(() => fs.rm(root, { recursive: true, force: true }));
+    const run = spawnSync(process.execPath, [
+        '--require', path.resolve('test-support/mock-instagram-network.js'), CLI,
+        'urls', 'https://www.patreon.com/creator',
+        'https://www.instagram.com/stories/example/100/', '--json',
+    ], { encoding: 'utf8' });
+    assert.equal(run.status, 1);
+    const report = JSON.parse(run.stdout);
+    assert.equal(report.results.length, 1);
+    assert.equal(report.results[0].media[0].id, '100');
+    assert.match(report.errors[0].error, /Unsupported provider/);
+});
