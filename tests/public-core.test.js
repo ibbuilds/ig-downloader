@@ -74,3 +74,46 @@ test('safe streaming supports WebM video and MP3 audio without full buffering', 
         assert.ok(result.path.endsWith('.' + format));
     }
 });
+
+test('HTML media discovery selects high-resolution srcset, lazy-loaded images and video posters', () => {
+    const html = [
+        '<img src="https://img.example.org/thumb.jpg" srcset="https://img.example.org/small.jpg 480w, https://img.example.org/full.webp 1600w">',
+        '<img src="data:image/gif;base64,AAAA" data-src="https://img.example.org/lazy.png">',
+        '<picture><source type="image/webp" srcset="https://img.example.org/one.webp 1x, https://img.example.org/two.webp 2x"></picture>',
+        '<video poster="https://img.example.org/poster.jpg"><source type="video/mp4" src="https://media.example.org/clip.mp4"></video>',
+    ].join('');
+    const urls = parsePageMedia(html, 'https://gallery.example.org/item', { all: true });
+    assert.deepEqual(urls.map((item) => item.url), [
+        'https://img.example.org/full.webp',
+        'https://img.example.org/lazy.png',
+        'https://img.example.org/two.webp',
+        'https://img.example.org/poster.jpg',
+        'https://media.example.org/clip.mp4',
+    ]);
+    assert.equal(urls[3].sourceKind, 'video-poster');
+    assert.equal(urls[4].isVideo, true);
+    const fallback = parsePageMedia('<img src="https://img.example.org/fallback.jpg" srcset="javascript:alert(1) 2x">', 'https://gallery.example.org/item', { all: true });
+    assert.equal(fallback[0].url, 'https://img.example.org/fallback.jpg');
+});
+
+test('indexed FIFO download limiter retains strict concurrency and order for a large mixed batch', async () => {
+    const { createLimiter } = require('../bin/ig-downloader.js');
+    assert.throws(() => createLimiter(0), /positive integer/);
+    let active = 0;
+    let peak = 0;
+    const starts = [];
+    const schedule = createLimiter(3);
+    const jobs = await Promise.all(Array.from({ length: 2400 }, (_, index) => schedule(async () => {
+        starts.push(index);
+        active++;
+        peak = Math.max(peak, active);
+        await Promise.resolve();
+        active--;
+        if (index === 317) throw new Error('expected per-item failure');
+        return index;
+    }).then((value) => ({ value }), (error) => ({ error: error.message }))));
+    assert.equal(peak, 3);
+    assert.deepEqual(starts, Array.from({ length: 2400 }, (_, index) => index));
+    assert.deepEqual(jobs[317], { error: 'expected per-item failure' });
+    assert.deepEqual(jobs[2399], { value: 2399 });
+});

@@ -44,8 +44,11 @@ async function openArchive(filename) {
             if (!HASH.test(key)) throw new TypeError('Invalid download archive key.');
             if (seen.has(key)) return { skipped: true };
             if (inFlight.has(key)) {
-                try { await inFlight.get(key); } catch { /* A failed earlier task is retriable. */ }
-                if (seen.has(key)) return { skipped: true };
+                // All concurrent callers observe the SAME outcome. Retrying here
+                // would stampede the source after one failed request; a separate
+                // later command/call may retry once the in-flight task is gone.
+                await inFlight.get(key);
+                return { skipped: true };
             }
             const pending = (async () => {
                 const value = await task();
