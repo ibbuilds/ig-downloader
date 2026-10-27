@@ -67,9 +67,10 @@ function parseArgs(argv) {
 async function loadItems(args, target) {
     if (args.inputJson) {
         const data = JSON.parse(await fs.readFile(args.inputJson, 'utf8'));
-        const result = getRawItemsFromResponse(data, data?.data?.xdt_api__v1__media__shortcode__web_info ? 'post' : 'story');
+        const sourceType = data?.data?.xdt_api__v1__media__shortcode__web_info || data?.type === 'post' ? 'post' : 'story';
+        const result = getRawItemsFromResponse(data, sourceType);
         if (!result?.items?.length) throw new Error('JSON has no recognizable Instagram media items.');
-        return result;
+        return { ...result, sourceType };
     }
     const cookie = await readCookie(args);
     return getInstagramItems(target, { cookie });
@@ -103,8 +104,8 @@ async function main(argv = process.argv.slice(2)) {
     }
     if (!args.inputJson && !args.positional[0]) throw new Error('Missing URL. Run ig-downloader --help.');
     const target = args.inputJson ? null : parseTarget(args.positional[0]);
-    const mode = args.mode || (target?.type === 'post' ? MODES.AUTO : MODES.IMAGE);
     const result = await loadItems(args, target);
+    const mode = args.mode || (target?.type === 'post' || result.sourceType === 'post' ? MODES.AUTO : MODES.IMAGE);
     const planned = result.items.map((item, index) => ({ index, media: selectMedia(item, mode) }));
     const unavailable = planned.filter((entry) => !entry.media).length;
     const available = planned.filter((entry) => entry.media);
