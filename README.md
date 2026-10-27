@@ -1,230 +1,104 @@
-# Instagram-Downloader
+# ig-downloader
 
-![icon](icons/icon128.png)
+A cross-platform Instagram media downloader: **browser extension + Node.js CLI**, with the same shared media-selection logic.
 
-## How this work
+> Forked from [hoaianle/Instagram-Downloader](https://github.com/hoaianle/Instagram-Downloader) (MIT). Original license and copyright are preserved in [LICENSE](LICENSE).
 
-With regex and some `ReactFiber` magic, I'm able to know which post you wanna download and fetch the api to download the photos for you.
+## Why this fork
 
-## Browser compatibility
+- **Image-first Stories:** saves Instagram's largest available image response instead of blindly saving an MP4.
+- **Transparent:** choose `image`, `auto`, or `video`, inspect the exact CDN URL, and see the `sourceKind` (`image`, `video`, or `video-poster`).
+- **Cross-platform:** Node.js 20+ terminal support on Linux, macOS and Windows without shell-specific dependencies.
+- **Fast:** direct CDN download, bounded concurrency, streaming (no buffering full files in RAM), unique file names.
+- **Careful:** HTTPS CDN allowlist, media MIME checks, bounded file sizes, no hard-coded account credentials, and no silent fallback from image to MP4.
 
-This extension should work fine on the following browsers with `fetch()` API and Chromium base browser, tested Browser:
+**Important:** Image resources attached to video Stories can be posters/previews, not the original uploaded picture. Instagram usually strips original EXIF/GPS data. No tool can reconstruct the uploader's original file from a compressed video or poster.
 
-- Google Chrome
-- MS Edge
-- FireFox
+## CLI
 
-## Download and install
+Requires Node.js 20 or newer.
 
-- Download [latest version](https://github.com/HOAIAN2/Instagram-Downloader/releases) and extract to a folder
-
-### Chrome or other Chromium browsers
-
-- Enable Chrome extensions developer mode
-- Drag and drop extracted folder to `chrome://extensions/`
-
-### Firefox (Development)
-
-- Go to Add-ons Manager `about:addons`
-- Click on Setting > Debug Add-ons
-- Click on `Load Temporary Add-on...` and select the `manifest.json` file
-
-## Settings
-
-Everything is configured in one dialog. Open it from the **Downloader settings** entry that the extension adds to the left sidebar, right below your profile link.
-
-The dialog has two sections, described below: **Download button style** and **File name templates**. Preferences are saved per-browser in `localStorage` and apply immediately, no reload needed.
-
-The dialog follows Instagram's light/dark theme automatically. There is no theme option because the extension mirrors whatever Instagram is already using.
-
-### Download button style
-
-Controls which download controls the extension shows. Pick one of three modes:
-
-| Mode                 | What you get                                                                       |
-| -------------------- | ---------------------------------------------------------------------------------- |
-| **Modern** (default) | Download buttons rendered directly on each post and on stories. No floating panel. |
-| **Legacy**           | The classic floating `Download` button plus the media panel.                       |
-| **Both**             | Modern and Legacy controls at the same time.                                       |
-
-The mode applies instantly - the buttons and panel appear or disappear without a page reload.
-
-### Modern (inline) buttons
-
-- **Posts** - a download button appears in the post action bar, right after the `Share` button. On the home feed and on post permalinks (`/p/`, `/reel/`, `/reel/`, `/reels/`, `/tv/`).
-- **Carousel posts** - a second button appears to download every slide as a single ZIP archive.
-- **Stories and highlights** - a download button appears next to the play/pause control. A second button shows up when the story has more than one item, to save the whole set as a ZIP.
-
-### Legacy media panel
-
-The panel is the older interface, and it's what the keyboard shortcuts drive.
-
-- Click `Download` (or press `D`) to open the media panel for the current post. Every photo and video in the post is listed as a thumbnail.
-- Click any thumbnail to save that file.
-- The panel is hidden automatically on DM pages (`/direct`) so it doesn't get in the way of conversations.
-- While the panel is open, the extension keeps watching the page. On the home feed it detects the post under your cursor, so you don't have to open the comment modal first. Thanks to ReactFiber.
-
-### Multi select
-
-Multi select lives in the media panel, so you need the panel open - **Legacy** or **Both** mode, or press `D` in **Modern** mode.
-
-- Click the `Media` title bar (or press `S`) to enter select mode. Each thumbnail gets a checkbox overlay.
-- Click thumbnails to select them, or click and hold the `Media` title bar to select/deselect everything at once.
-- In select mode the single `Download` button is replaced by two buttons, both of which act on the selection and stay disabled until at least one item is selected:
-    - `Save as zip` - pack the selected files into a single archive.
-    - `Save all` - save the selected files individually, without archiving.
-
-## File name templates
-
-The **File name templates** section controls how downloaded files are named. It's split into three independent scopes, because a story and a post don't have the same useful metadata:
-
-- **Posts** - for photos, videos, reels and multi-slide posts.
-- **Stories** - for a single story.
-- **Highlights** - for a saved highlight.
-
-Each scope has its own row of tokens, plus a live preview showing the resulting **Single file** name and **ZIP archive** name.
-
-### Building a template
-
-- Drag a variable from the palette into a row, or just click it to append to the currently active row.
-- Drag a token already in a row to reorder it, or move it left/right across the boundary between tokens.
-- Click the `×` on a token to remove it.
-- `Reset` restores the default template for that scope only.
-- Click a row to make it the active row. Clicking a palette variable adds it to the active row.
-
-Underscores are inserted automatically between values, so you never have to type them. Tokens that have no value for a given download are skipped instead of leaving a blank or a stray underscore.
-
-### Available variables
-
-| Variable             | Value                                                          |
-| -------------------- | -------------------------------------------------------------- |
-| `#original_filename` | The filename Instagram reports for the media.                  |
-| `#username`          | The account that posted it.                                    |
-| `#date`              | Publication date, formatted with the date format chosen below. |
-| `#title`             | Caption text, or the highlight name.                           |
-| `#id`                | The post's shortcode.                                          |
-| `#resolution`        | Pixel dimensions, e.g. `1080x1920`.                            |
-| `#video_bitrate`     | Video bitrate, e.g. `4.2Mbps`.                                 |
-| `#video_codec`       | Video codec, e.g. `VP9`.                                       |
-
-**Single-file only.** `#original_filename`, `#resolution`, `#video_bitrate` and `#video_codec` describe one specific file, so they are used for individual media names but omitted from the ZIP archive name. A ZIP is named from the post, not from its files.
-
-### Date format
-
-Applies to `#date` in every scope. Uses Instagram's publication date in UTC.
-
-| Option                 | Example        |
-| ---------------------- | -------------- |
-| `YYYY-MM-DD` (default) | `2026-09-17`   |
-| `DD_MM_YYYY`           | `17_09_2026`   |
-| `MM_DD_YYYY`           | `09_17_2026`   |
-| `MMM DD, YYYY`         | `Sep 17, 2026` |
-
-### Default templates
-
-| Scope      | Default               |
-| ---------- | --------------------- |
-| Posts      | `#username_#id_#date` |
-| Stories    | `#username_#id_#date` |
-| Highlights | `#username_#title`    |
-
-### Sanitizing
-
-Names are cleaned up before they hit disk, so a caption or username can't produce an invalid file:
-
-- `< > : " / \ | ? *` and control characters become `-`.
-- Runs of whitespace collapse to a single space.
-- Trailing dots and spaces are stripped (Windows requirement).
-- Each variable is capped at 90 characters, the whole name at 180. If everything ends up empty, `instagram_download` is used.
-
-## Features
-
-- Download posts ✔
-- Download reels ✔
-- Download latest stories ✔
-- Download highlight stories ✔
-- Support high resolution ✔
-- Download the highest-quality DASH video and audio and mux them locally without re-encoding (big thank to [XxfireBall7767](https://github.com/XxfireBall7767)) ✔
-- Support download zip file ✔
-- Configurable download UI: inline buttons, legacy panel, or both (big thank to [XxfireBall7767](https://github.com/XxfireBall7767)) ✔
-- Configurable file names with live preview (big thank to [XxfireBall7767](https://github.com/XxfireBall7767)) ✔
-
-## Customize
-
-You can modify anything you want except some constants start with "IG\_" that definitely gonna break this extension.
-
-Edit Hide / Show Transition effects
-
-```css
-.display-container.hide {
-    transform-origin: 85% bottom;
-    transform: scale(0);
-    pointer-events: none;
-    opacity: 0.6;
-}
+```sh
+git clone https://github.com/ibbuilds/ig-downloader.git
+cd ig-downloader
+npm link
 ```
 
-Panel and Legacy button geometry live in `src/style/style.css`:
+### Examples
 
-```css
-/* .display-container is the media panel */
-width: calc(80vh / 5 * 3);
-height: 75vh;
-max-width: 480px;
-max-height: 800px;
-bottom: 140px;
-inset-inline-end: 20px;
-
-/* .download-button is the Legacy button */
-width: 120px;
-height: 30px;
-bottom: 100px;
-inset-inline-end: 34px;
+```sh
+ig-downloader 'https://www.instagram.com/stories/example/1234567890/'
+ig-downloader 'https://www.instagram.com/stories/example/1234567890/' --mode image
+ig-downloader 'https://www.instagram.com/stories/highlights/1234567890/' --output downloads
+ig-downloader 'https://www.instagram.com/p/SHORTCODE/' --mode auto
+ig-downloader 'https://www.instagram.com/reel/SHORTCODE/' --mode video
+ig-downloader '@example' --url-only
+ig-downloader 'https://www.instagram.com/stories/example/1234567890/' --dry-run --json
 ```
 
-Both use `inset-inline-end`, so they follow Instagram's layout direction automatically.
+The default mode is **image** for Stories/highlights and **auto** for posts/Reels. `image` **never silently downloads an MP4**. Select `auto` to download the original Story media type. `--mode video` prefers video but uses the still image if no video is present.
 
-## Keyboard shortcut
+`--url-only` prints signed, short-lived CDN media links; `--dry-run` prints provenance/size without saving; `--json` prints machine-readable results. `--concurrency 1..4` controls parallel downloads (default 2).
 
-Some keyboard shortcuts will not work if you use an external application for typing.
+### Authentication and permissions
 
-- Download: `D`
-- Close: `esc` `C`
-- Select all `S`
-- Keyboard shortcut should work if you don't focus on special HTML Elements like `input` `textarea` or any element with `textbox` role (ex: comment, search, ...)
+Instagram does **not** promise anonymous CLI access to Stories. Only download content you are allowed to view. If you have legitimate access, the CLI can use your existing session cookies; it does not bypass Instagram logins or private profiles.
 
-These shortcuts drive the Legacy panel.
+Export your **own** cookies for `instagram.com` as a Netscape cookies.txt, or a plain `Cookie: name=value; name=value` line. Then:
 
-`D` works in every mode. It clicks the `Download` button programmatically, so it still opens the panel in **Modern** mode even though the button itself is hidden there.
-
-`esc`/`C` closes the panel, and `S` toggles select mode. Both are no-ops while the panel is closed, which is always the case in **Modern** mode until you press `D`.
-
-Shortcuts are disabled on DM pages (`/direct`).
-
-## Settings storage
-
-Preferences live in `localStorage` under the `instagram.com` origin. Useful for scripting or resetting a broken preference:
-
-| Key                                    | Value                                                       |
-| -------------------------------------- | ----------------------------------------------------------- |
-| `instagramDownloaderUiMode`            | `inline` (default), `panel`, or `both`                      |
-| `instagramDownloaderFilenameTemplates` | JSON object keyed by scope: `post`, `stories`, `highlights` |
-| `instagramDownloaderDateFormat`        | One of the four date formats above                          |
-
-For example, to force the Legacy panel without opening the dialog:
-
-```js
-localStorage.setItem('instagramDownloaderUiMode', 'panel');
-location.reload();
+```sh
+ig-downloader 'https://www.instagram.com/stories/example/1234567890/' --cookie-file /path/to/cookies.txt
 ```
 
-## Deprecated features
+Alternatively set `IG_COOKIE` to your Cookie header value in your environment. Treat sessions as secrets: never commit cookies, post them to issue trackers, or share them with others. **The tool does not log cookie values or send them to third-party download servers.** They are only supplied to Instagram's own session/API endpoints, never to the CDN.
 
-These features was deprecated for some reason.
+The CLI uses the Instagram web GraphQL queries used by the upstream extension, which Instagram can change without warning. `403`, `429` or unrecognized GraphQL responses are surfaced as errors rather than misreported as successful downloads. No claim of universal or permanent compatibility is made.
 
-- V5.1.0
-    - Set fallback download to latest post from some user.
+### Offline/testing input
 
-## Here is Demo
+To process a saved (authorized) Instagram API response instead of requesting the live API:
 
-[Demo v6.0.0](https://github.com/user-attachments/assets/2be00cbf-58bb-4453-aa47-51b67d7967f0)
+```sh
+ig-downloader --input-json path/to/instagram-response.json --dry-run --json
+```
+
+Do not publish raw API responses containing private content or session data.
+
+## Extension
+
+1. Clone/download the branch from this repository.
+2. Chrome/Edge → `chrome://extensions` → Developer mode → **Load unpacked** → choose the repository folder containing `manifest.json`.
+3. Open Instagram and select **Downloader settings** in the sidebar.
+4. Choose **Story media format**: *Image first* (default), *Original type*, or *Prefer video*.
+5. Use the existing inline Story/post controls or legacy panel.
+
+All original post, Reel, ZIP, filename-template and video-quality controls remain. The image-first Story setting is stored locally as `igDownloaderStoryMediaMode`.
+
+The browser extension and CLI share `shared/media.js`. That selector picks the highest-resolution image candidate from `image_versions2` (or the best video from `video_versions`) and records whether an image came from a video Story.
+
+## Development
+
+```sh
+npm test
+npm run check
+```
+
+- `shared/media.js` — deterministic shared image/video selector.
+- `lib/instagram.js` — Instagram session requests and response parsing.
+- `lib/targets.js` — strict Instagram URL parsing.
+- `lib/download.js` — safe streaming CDN download.
+- `bin/ig-downloader.js` — CLI argument handling and output.
+- `tests/` — unit tests (no live Instagram credentials or network required).
+
+## Limitations
+
+- Instagram may modify GraphQL document IDs, Story payloads, or CDN behavior at any time.
+- Private and restricted media remain subject to your actual account permissions.
+- Story IDs can expire or disappear from Instagram's accessible response.
+- Video Story posters may not contain edits/music or be the original photo.
+- The CLI saves available progressive video resources. The extension retains its higher-quality DASH muxing capability.
+- This is an independent community fork, not affiliated with Instagram or Meta.
+
+## License
+
+MIT. See [LICENSE](LICENSE), including upstream copyright attribution.
