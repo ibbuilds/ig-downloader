@@ -12,12 +12,13 @@
     "node": ">=20"
   },
   "bin": {
-    "ig-downloader": "bin/ig-downloader.js"
+    "ig-downloader": "bin/ig-downloader.js",
+    "igd": "bin/ig-downloader.js"
   },
   "scripts": {
     "test": "node --test",
     "check": "npm test && npm run check:syntax && npm run check:extension",
-    "check:syntax": "node --check bin/ig-downloader.js && node --check lib/instagram.js && node --check lib/download.js && node --check shared/media.js && node --check lib/targets.js",
+    "check:syntax": "node --check bin/ig-downloader.js && node --check lib/instagram.js && node --check lib/download.js && node --check shared/media.js && node --check lib/targets.js && node --check lib/providers.js",
     "check:extension": "node scripts/check-extension.js"
   }
 }

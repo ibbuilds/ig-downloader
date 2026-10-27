@@ -3,77 +3,124 @@
 
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const { parseTarget } = require('../lib/targets.js');
-const { readCookie, getInstagramItems, getRawItemsFromResponse } = require('../lib/instagram.js');
+const { readCookie, getRawItemsFromResponse } = require('../lib/instagram.js');
+const { resolveTarget, PROVIDERS } = require('../lib/providers.js');
 const { downloadMedia, validateMediaUrl } = require('../lib/download.js');
 const { MODES, selectMedia } = require('../shared/media.js');
 const { version } = require('../package.json');
 
-const HELP = `ig-downloader v${version}
-Cross-platform CLI for Instagram Stories, highlights, posts and Reels (Node.js 20+).
+const COMMANDS = Object.freeze({ get: 'get', download: 'get', dl: 'get', urls: 'urls', url: 'urls', inspect: 'inspect', info: 'inspect', providers: 'providers', help: 'help' });
+const MAX_TARGETS = 2000;
+const HELP = `igd v${version} — fast Instagram media downloads (Node.js 20+)
 
 Usage:
-  ig-downloader <instagram-url-or-username> [options]
-  ig-downloader --input-json <file> [options]
+  igd <url-or-username> [options]                Download media
+  igd get <url...> [options]                     Download multiple targets
+  igd urls <url...> [options]                    Print direct media URLs
+  igd inspect <url...> [options]                 Preview media and provenance
+  igd get - [options]                           Read URLs/usernames from stdin
+  igd get --input-file links.txt [options]      Read a batch file
+  igd inspect --input-json response.json --json Process saved Instagram API JSON
+  igd providers                                  List supported sites
 
 Options:
-  --mode image|auto|video   Stories default to image; posts default to auto
-  --output <directory>      Download destination (default: current directory)
-  --cookie-file <file>      Netscape cookie export or raw Cookie header
-  --input-json <file>       Read Instagram API JSON instead of requesting the API
-  --url-only                Print the exact selected CDN URL(s) without downloading
-  --dry-run                 Show source kind and filename, without downloading
-  --json                    Print structured results as JSON
-  --concurrency <1..4>      Parallel downloads (default: 2)
-  -h, --help                Show help
-  -v, --version             Show version
+  -m, --mode image|auto|video   Stories default to image; posts default to auto
+  -o, --output <directory>      Download destination (default: current directory)
+  -j, --concurrency <1..8>      Concurrent downloads (default: 4)
+  -f, --input-file <file>      Read newline-separated targets; - for stdin
+      --input-json <file>      Read a saved Instagram response, without API requests
+      --cookie-file <file>     Netscape cookie export or Cookie header
+      --url-only              Same as 'urls'
+      --dry-run               Same as 'inspect'
+      --json                  Machine-readable results
+  -q, --quiet                 Hide successful download messages
+  -h, --help                  Show help
+  -v, --version               Show version
 
-Environment: IG_COOKIE provides an optional Cookie header (do not commit cookies).
-A public Instagram URL may require authenticated access. No login bypass is attempted.
-For video Stories, image mode saves Instagram's preview/poster (not necessarily the original uploaded photo).
+The old 'ig-downloader' command remains available. 'image' never falls back to MP4;
+for video Stories an image is usually a poster, not the original photograph.
+Downloads require legitimate access; IG_COOKIE or --cookie-file may supply your session.
 `;
 
 function parseArgs(argv) {
-    const opts = { positional: [], concurrency: 2 };
+    const opts = { command: 'get', positional: [], concurrency: 4 };
     const valueFlags = {
-        '--mode': 'mode',
-        '--output': 'output',
-        '--cookie-file': 'cookieFile',
-        '--input-json': 'inputJson',
-        '--concurrency': 'concurrency',
+        '--mode': 'mode', '-m': 'mode', '--output': 'output', '-o': 'output',
+        '--cookie-file': 'cookieFile', '--input-json': 'inputJson',
+        '--input-file': 'inputFile', '-f': 'inputFile',
+        '--concurrency': 'concurrency', '-j': 'concurrency',
     };
-    const toggles = { '--url-only': 'urlOnly', '--dry-run': 'dryRun', '--json': 'json', '--help': 'help', '-h': 'help', '--version': 'version', '-v': 'version' };
+    const toggles = {
+        '--url-only': 'urlOnly', '--dry-run': 'dryRun', '--json': 'json',
+        '--quiet': 'quiet', '-q': 'quiet', '--help': 'help', '-h': 'help',
+        '--version': 'version', '-v': 'version',
+    };
     for (let i = 0; i < argv.length; i++) {
         const arg = argv[i];
-        if (Object.hasOwn(toggles, arg)) {
+        if (i === 0 && Object.hasOwn(COMMANDS, arg)) {
+            opts.command = COMMANDS[arg];
+        } else if (arg === '--') {
+            opts.positional.push(...argv.slice(i + 1));
+            break;
+        } else if (Object.hasOwn(toggles, arg)) {
             opts[toggles[arg]] = true;
         } else if (Object.hasOwn(valueFlags, arg)) {
-            if (!argv[i + 1] || argv[i + 1].startsWith('--')) throw new Error('Missing value for ' + arg);
+            if (argv[i + 1] === undefined || (argv[i + 1].startsWith('-') && argv[i + 1] !== '-')) {
+                throw new Error('Missing value for ' + arg);
+            }
             opts[valueFlags[arg]] = argv[++i];
-        } else if (arg.startsWith('-')) {
+        } else if (arg.startsWith('-') && arg !== '-') {
             throw new Error('Unknown option: ' + arg);
         } else {
             opts.positional.push(arg);
         }
     }
-    if (opts.positional.length > 1) throw new Error('Supply only one Instagram URL or username.');
     if (opts.mode && !Object.values(MODES).includes(opts.mode)) throw new Error('Mode must be image, auto or video.');
-    if (!/^[1-4]$/.test(String(opts.concurrency))) throw new Error('Concurrency must be between 1 and 4.');
+    if (!/^[1-8]$/.test(String(opts.concurrency))) throw new Error('Concurrency must be between 1 and 8.');
     opts.concurrency = Number(opts.concurrency);
-    if (opts.inputJson && opts.positional.length) throw new Error('Do not combine --input-json with an Instagram URL.');
+    if (opts.inputJson && (opts.positional.length || opts.inputFile)) {
+        throw new Error('--input-json cannot be combined with URLs or --input-file.');
+    }
+    if (opts.command === 'urls') opts.urlOnly = true;
+    if (opts.command === 'inspect') opts.dryRun = true;
+    if (opts.urlOnly && opts.dryRun) throw new Error('Choose either URLs or inspect, not both.');
     return opts;
 }
 
-async function loadItems(args, target) {
-    if (args.inputJson) {
-        const data = JSON.parse(await fs.readFile(args.inputJson, 'utf8'));
-        const sourceType = data?.data?.xdt_api__v1__media__shortcode__web_info || data?.type === 'post' ? 'post' : 'story';
-        const result = getRawItemsFromResponse(data, sourceType);
-        if (!result?.items?.length) throw new Error('JSON has no recognizable Instagram media items.');
-        return { ...result, sourceType };
+async function loadTargets(args, stdin = process.stdin) {
+    const targets = [];
+    const readLines = (text) => {
+        for (const line of text.split(/\r?\n/)) {
+            const target = line.trim();
+            if (target && !target.startsWith('#')) targets.push(target);
+        }
+    };
+    let stdinContent;
+    async function readSource(filename) {
+        if (filename !== '-') return fs.readFile(filename, 'utf8');
+        if (stdinContent !== undefined) return stdinContent;
+        const chunks = [];
+        for await (const chunk of stdin) chunks.push(chunk);
+        stdinContent = Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))).toString('utf8');
+        return stdinContent;
     }
-    const cookie = await readCookie(args);
-    return getInstagramItems(target, { cookie });
+    for (const target of args.positional) {
+        if (target === '-') readLines(await readSource('-'));
+        else targets.push(target);
+    }
+    if (args.inputFile) readLines(await readSource(args.inputFile));
+    if (!targets.length) throw new Error('Missing URL. Run igd --help or pass - for stdin.');
+    const unique = [...new Set(targets)];
+    if (unique.length > MAX_TARGETS) throw new Error(`Maximum ${MAX_TARGETS} targets per batch.`);
+    return unique;
+}
+
+async function loadOffline(jsonFile) {
+    const data = JSON.parse(await fs.readFile(jsonFile, 'utf8'));
+    const sourceType = data?.data?.xdt_api__v1__media__shortcode__web_info || data?.type === 'post' ? 'post' : 'story';
+    const result = getRawItemsFromResponse(data, sourceType);
+    if (!result?.items?.length) throw new Error('JSON has no recognizable Instagram media items.');
+    return { ...result, sourceType };
 }
 
 async function mapLimit(items, limit, mapper) {
@@ -85,34 +132,24 @@ async function mapLimit(items, limit, mapper) {
             try {
                 results[index] = { ok: true, value: await mapper(items[index], index) };
             } catch (error) {
-                results[index] = { ok: false, error: error.message };
+                results[index] = { ok: false, error: error?.message || String(error) };
             }
         }
     }));
     return results;
 }
 
-async function main(argv = process.argv.slice(2)) {
-    const args = parseArgs(argv);
-    if (args.help) {
-        process.stdout.write(HELP);
-        return 0;
-    }
-    if (args.version) {
-        process.stdout.write(version + '\n');
-        return 0;
-    }
-    if (!args.inputJson && !args.positional[0]) throw new Error('Missing URL. Run ig-downloader --help.');
-    const target = args.inputJson ? null : parseTarget(args.positional[0]);
-    const result = await loadItems(args, target);
-    const mode = args.mode || (target?.type === 'post' || result.sourceType === 'post' ? MODES.AUTO : MODES.IMAGE);
-    const planned = result.items.map((item, index) => ({ index, media: selectMedia(item, mode) }));
-    const unavailable = planned.filter((entry) => !entry.media).length;
-    const available = planned.filter((entry) => entry.media);
-    if (!available.length) throw new Error('No media with the requested format was available. Try --mode auto.');
-    const mediaInfo = available.map(({ index, media }) => {
+function planMedia(items, mode) {
+    let unavailable = 0;
+    const available = [];
+    for (const [index, item] of items.entries()) {
+        const media = selectMedia(item, mode);
+        if (!media) {
+            unavailable++;
+            continue;
+        }
         validateMediaUrl(media.url);
-        return {
+        const info = {
             index,
             id: media.id,
             url: media.url,
@@ -121,33 +158,116 @@ async function main(argv = process.argv.slice(2)) {
             resolution: media.width && media.height ? `${media.width}x${media.height}` : null,
             format: media.format,
         };
+        available.push({ media, info });
+    }
+    if (!available.length) throw new Error('No media with the requested format was available. Try --mode auto.');
+    return { available, unavailable };
+}
+
+async function main(argv = process.argv.slice(2)) {
+    const args = parseArgs(argv);
+    if (args.help || args.command === 'help') {
+        process.stdout.write(HELP);
+        return 0;
+    }
+    if (args.version) {
+        process.stdout.write(version + '\n');
+        return 0;
+    }
+    if (args.command === 'providers') {
+        const sites = Object.keys(PROVIDERS);
+        process.stdout.write(args.json ? JSON.stringify({ supported: sites }) + '\n' : sites.join('\n') + '\n');
+        return 0;
+    }
+
+    const rawTargets = args.inputJson ? [args.inputJson] : await loadTargets(args);
+    const parsed = args.inputJson ? null : rawTargets.map((raw) => {
+        try {
+            return { ok: true, ...resolveTarget(raw) };
+        } catch (error) {
+            return { ok: false, error: error.message };
+        }
+    });
+    // Authentication is loaded once. A command-scoped session shares the home
+    // page token and identical requests across concurrent Story targets.
+    const cookie = args.inputJson ? '' : await readCookie(args);
+    const sessions = new Map();
+    const resolved = await mapLimit(rawTargets, Math.min(3, args.concurrency), async (raw, targetIndex) => {
+        let result;
+        let providerId = 'instagram';
+        let target = null;
+        if (args.inputJson) {
+            result = await loadOffline(args.inputJson);
+        } else {
+            const source = parsed[targetIndex];
+            if (!source.ok) throw new Error(source.error);
+            providerId = source.provider.id;
+            target = source.target;
+            if (!sessions.has(providerId)) sessions.set(providerId, source.provider.createSession({ cookie }));
+            result = await source.provider.resolve(target, { cookie, session: sessions.get(providerId) });
+        }
+        const mode = args.mode || (target?.type === 'post' || result.sourceType === 'post' ? MODES.AUTO : MODES.IMAGE);
+        const { available, unavailable } = planMedia(result.items, mode);
+        return { target: raw, provider: providerId, mode, username: result.username, unavailable, available, saved: [], errors: [] };
     });
 
-    if (args.urlOnly) {
-        for (const item of mediaInfo) process.stdout.write(item.url + '\n');
-        if (unavailable) process.stderr.write(`Skipped ${unavailable} item(s) with no requested media type.\n`);
-        return unavailable ? 1 : 0;
-    }
-    if (args.dryRun) {
-        if (args.json) process.stdout.write(JSON.stringify({ mode, username: result.username, unavailable, media: mediaInfo }, null, 2) + '\n');
-        else for (const item of mediaInfo) process.stdout.write(`${item.id} ${item.sourceKind} ${item.resolution || 'unknown'} ${item.url}\n`);
-        return unavailable ? 1 : 0;
+    const successes = resolved.map((value, index) => value.ok ? { ...value.value, index } : null).filter(Boolean);
+    const failures = resolved.map((value, index) => !value.ok ? { target: rawTargets[index], error: value.error } : null).filter(Boolean);
+    if (!args.urlOnly && !args.dryRun) {
+        // One global worker pool bounds total CDN transfers, even for large batches.
+        const queue = successes.flatMap((entry) => entry.available.map((asset) => ({ entry, asset })));
+        const downloaded = await mapLimit(queue, args.concurrency, async ({ entry, asset }) => {
+            const outcome = await downloadMedia(asset.media, {
+                username: entry.username, index: asset.info.index, output: args.output || '.',
+            });
+            return { ...asset.info, path: path.resolve(outcome.path), bytes: outcome.bytes, contentType: outcome.contentType };
+        });
+        downloaded.forEach((result, index) => {
+            const { entry, asset } = queue[index];
+            if (result.ok) entry.saved.push(result.value);
+            else entry.errors.push({ index: asset.info.index, error: result.error });
+        });
     }
 
-    const downloaded = await mapLimit(available, args.concurrency, async ({ index, media }) => {
-        const outcome = await downloadMedia(media, { username: result.username, index, output: args.output || '.' });
-        return { ...mediaInfo.find((x) => x.index === index), path: path.resolve(outcome.path), bytes: outcome.bytes, contentType: outcome.contentType };
-    });
-    const success = downloaded.filter((entry) => entry.ok).map((entry) => entry.value);
-    const errors = downloaded.map((entry, index) => !entry.ok ? { index: available[index].index, error: entry.error } : null).filter(Boolean);
     if (args.json) {
-        process.stdout.write(JSON.stringify({ mode, username: result.username, saved: success, unavailable, errors }, null, 2) + '\n');
+        const toReport = (entry) => {
+            const report = {
+                mode: entry.mode,
+                username: entry.username,
+                ...(args.dryRun || args.urlOnly
+                    ? { unavailable: entry.unavailable, media: entry.available.map((asset) => asset.info) }
+                    : { saved: entry.saved, unavailable: entry.unavailable, errors: entry.errors }),
+            };
+            return report;
+        };
+        const response = rawTargets.length === 1 && successes.length === 1 && !failures.length
+            ? toReport(successes[0])
+            : {
+                version: 1,
+                results: successes.map((entry) => ({ target: entry.target, provider: entry.provider, ...toReport(entry) })),
+                errors: failures,
+            };
+        process.stdout.write(JSON.stringify(response, null, 2) + '\n');
     } else {
-        for (const item of success) process.stdout.write(`Saved ${item.path} [${item.sourceKind}, ${item.bytes} bytes]\n`);
-        for (const item of errors) process.stderr.write(`Failed item ${item.index + 1}: ${item.error}\n`);
-        if (unavailable) process.stderr.write(`Skipped ${unavailable} item(s) lacking a requested image/video resource.\n`);
+        for (const entry of successes) {
+            if (args.urlOnly) {
+                for (const asset of entry.available) process.stdout.write(asset.info.url + '\n');
+            } else if (args.dryRun) {
+                for (const asset of entry.available) {
+                    const prefix = rawTargets.length > 1 ? `${entry.target} ` : '';
+                    process.stdout.write(`${prefix}${asset.info.id} ${asset.info.sourceKind} ${asset.info.resolution || 'unknown'} ${asset.info.url}\n`);
+                }
+            } else if (!args.quiet) {
+                for (const asset of entry.saved) {
+                    process.stdout.write(`Saved ${asset.path} [${asset.sourceKind}, ${asset.bytes} bytes]\n`);
+                }
+            }
+            for (const err of entry.errors) process.stderr.write(`Failed ${entry.target} item ${err.index + 1}: ${err.error}\n`);
+            if (entry.unavailable) process.stderr.write(`Skipped ${entry.unavailable} item(s) for ${entry.target}: requested media unavailable.\n`);
+        }
+        for (const failure of failures) process.stderr.write(`Failed ${failure.target}: ${failure.error}\n`);
     }
-    return errors.length || unavailable ? 1 : 0;
+    return failures.length || successes.some((entry) => entry.unavailable || entry.errors.length) ? 1 : 0;
 }
 
 if (require.main === module) {
@@ -157,4 +277,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { parseArgs, main, mapLimit };
+module.exports = { parseArgs, loadTargets, planMedia, main, mapLimit };

@@ -24,21 +24,32 @@ cd ig-downloader
 npm link
 ```
 
-### Examples
+### Fast commands: `igd`
+
+`npm link` installs both commands: **`igd`** (recommended) and the backwards-compatible **`ig-downloader`**. No alias configuration or extra package is needed.
 
 ```sh
-ig-downloader 'https://www.instagram.com/stories/example/1234567890/'
-ig-downloader 'https://www.instagram.com/stories/example/1234567890/' --mode image
-ig-downloader 'https://www.instagram.com/stories/highlights/1234567890/' --output downloads
-ig-downloader 'https://www.instagram.com/p/SHORTCODE/' --mode auto
-ig-downloader 'https://www.instagram.com/reel/SHORTCODE/' --mode video
-ig-downloader '@example' --url-only
-ig-downloader 'https://www.instagram.com/stories/example/1234567890/' --dry-run --json
+igd 'https://www.instagram.com/reel/SHORTCODE/'             # download
+igd get 'https://www.instagram.com/p/SHORTCODE/' -o ./media
+igd urls 'https://www.instagram.com/stories/example/1234567890/'
+igd inspect 'https://www.instagram.com/stories/example/1234567890/' --json
+igd 'https://www.instagram.com/reel/SHORTCODE/' -m video -j 4
+igd get URL1 URL2 URL3 -j 8 -o ./downloads                # batch
+igd get --input-file links.txt --json                       # file batch
+cat links.txt | igd get - -q                                # stdin / shell pipeline
+igd providers                                               # installed providers
+igd --help
 ```
+
+Subcommands are optional: `igd URL` downloads media; `get`, `urls`, `inspect` and `providers` are explicit alternatives. Legacy flags `--url-only` and `--dry-run` remain available. Short options include `-m` (mode), `-o` (output), `-j` (concurrency), `-f` (input file), and `-q` (quiet).
+
+For batches, use multiple targets or a UTF-8 file with one URL/username per line. Blank lines, lines beginning with `#` and repeated targets are skipped. `-` reads stdin; the maximum batch size is 2,000 distinct targets. GraphQL resolution uses at most three workers, while `-j` bounds total CDN downloads to 1–8 transfers. The default is 4, adjustable downward if Instagram limits requests.
+
+`--json` emits the established single-target shape on success and a `{version, results, errors}` envelope for batches or per-target resolution failures. Failures return a nonzero exit code while other batch items continue. `igd urls --json` returns media metadata rather than mixing raw URL lines with JSON output.
 
 The default mode is **image** for Stories/highlights and **auto** for posts/Reels. `image` **never silently downloads an MP4**. Select `auto` to download the original Story media type. `--mode video` prefers video but uses the still image if no video is present.
 
-`--url-only` prints signed, short-lived CDN media links; `--dry-run` prints provenance/size without saving; `--json` prints machine-readable results. `--concurrency 1..4` controls parallel downloads (default 2).
+Direct links are short-lived signed CDN URLs. `inspect` does not download media. Repeated Stories from the same account share session setup and matching Instagram API responses within one command, reducing duplicate requests.
 
 ### Authentication and permissions
 
@@ -47,7 +58,7 @@ Instagram does **not** promise anonymous CLI access to Stories. Only download co
 Export your **own** cookies for `instagram.com` as a Netscape cookies.txt, or a plain `Cookie: name=value; name=value` line. Then:
 
 ```sh
-ig-downloader 'https://www.instagram.com/stories/example/1234567890/' --cookie-file /path/to/cookies.txt
+igd 'https://www.instagram.com/stories/example/1234567890/' --cookie-file /path/to/cookies.txt
 ```
 
 Alternatively set `IG_COOKIE` to your Cookie header value in your environment. Treat sessions as secrets: never commit cookies, post them to issue trackers, or share them with others. **The tool does not log cookie values or send them to third-party download servers.** They are only supplied to Instagram's own session/API endpoints, never to the CDN.
@@ -59,7 +70,7 @@ The CLI uses the Instagram web GraphQL queries used by the upstream extension, w
 To process a saved (authorized) Instagram API response instead of requesting the live API:
 
 ```sh
-ig-downloader --input-json path/to/instagram-response.json --dry-run --json
+igd inspect --input-json path/to/instagram-response.json --json
 ```
 
 Do not publish raw API responses containing private content or session data.
@@ -85,14 +96,19 @@ npm run check
 
 `npm run check` runs offline unit/integration tests, validates core JavaScript syntax, and statically checks the extension's content scripts, manifest assets, and web-accessible resources. It does **not** verify live Instagram requests or load the extension in Chrome.
 
-CI uses GitHub-hosted Ubuntu, Windows and macOS runners for Node.js 20 and 22; no self-hosted runner needs to be installed. The workflow supports pushes, pull requests and manual dispatch. **On newly forked repositories, GitHub Actions must first be enabled under the repository's Actions tab** before workflows will execute. Re-run the workflow when that first-time GitHub fork restriction is lifted.
+CI uses GitHub-hosted Ubuntu, Windows and macOS runners for Node.js 20 and 22; no self-hosted runner needs to be installed. The workflow supports pushes, pull requests and manual dispatch. The repository's Actions workflows are enabled; the current `main` CI matrix has passed. The real Instagram website and authenticated sessions require separate live acceptance testing.
 
 - `shared/media.js` — deterministic shared image/video selector.
 - `lib/instagram.js` — Instagram session requests and response parsing.
 - `lib/targets.js` — strict Instagram URL parsing.
+- `lib/providers.js` — explicit provider registry (Instagram only today).
 - `lib/download.js` — safe streaming CDN download.
 - `bin/ig-downloader.js` — CLI argument handling and output.
-- `tests/` — unit tests (no live Instagram credentials or network required).
+- `tests/` — unit and CLI tests with mocked Instagram/CDN traffic (no live credentials needed).
+
+## Extensible providers
+
+The provider registry keeps platform-specific URL parsing, authentication, and media resolution separate from CLI orchestration. **Only Instagram is implemented.** Patreon is a potential future integration through its supported API v2/OAuth permissions. OnlyFans is **not** an implemented provider; unofficial endpoints, paywall bypass and DRM circumvention are not part of this tool. Any future adapter must validate authorized access and safe download origins rather than reusing Instagram's CDN allowlist.
 
 ## Limitations
 
