@@ -34,7 +34,7 @@ test('igd alias and subcommands retain backwards compatible CLI', () => {
     assert.match(help.stdout, /igd/);
     const sites = spawnSync(process.execPath, [CLI, 'providers', '--json'], { encoding: 'utf8' });
     assert.equal(sites.status, 0);
-    assert.deepEqual(JSON.parse(sites.stdout), { supported: ['instagram'] });
+    assert.deepEqual(JSON.parse(sites.stdout), { supported: ['instagram', 'reddit', 'facebook', 'tiktok', 'twitter', 'pinterest', 'web'] });
 });
 
 test('batch target input supports comments, files, stdin and stable deduplication', async (t) => {
@@ -45,7 +45,7 @@ test('batch target input supports comments, files, stdin and stable deduplicatio
     const args = parseArgs(['get', '@bar', '-f', file, '-']);
     const urls = await loadTargets(args, Readable.from(['# another comment\n@baz\n@foo\n']));
     assert.deepEqual(urls, ['@bar', '@baz', '@foo']); // stdin is processed at positional position
-    assert.deepEqual(Object.keys(PROVIDERS), ['instagram']);
+    assert.deepEqual(Object.keys(PROVIDERS), ['instagram', 'reddit', 'facebook', 'tiktok', 'twitter', 'pinterest', 'web']);
     assert.equal(resolveTarget('@test').provider.id, 'instagram');
     assert.equal(resolveTarget('https://www.patreon.com/creator').provider.id, 'web');
 });
