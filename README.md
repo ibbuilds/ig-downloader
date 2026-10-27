@@ -83,6 +83,10 @@ npm test
 npm run check
 ```
 
+`npm run check` runs offline unit/integration tests, validates core JavaScript syntax, and statically checks the extension's content scripts, manifest assets, and web-accessible resources. It does **not** verify live Instagram requests or load the extension in Chrome.
+
+CI uses GitHub-hosted Ubuntu, Windows and macOS runners for Node.js 20 and 22; no self-hosted runner needs to be installed. The workflow supports pushes, pull requests and manual dispatch. **On newly forked repositories, GitHub Actions must first be enabled under the repository's Actions tab** before workflows will execute. Re-run the workflow when that first-time GitHub fork restriction is lifted.
+
 - `shared/media.js` — deterministic shared image/video selector.
 - `lib/instagram.js` — Instagram session requests and response parsing.
 - `lib/targets.js` — strict Instagram URL parsing.
