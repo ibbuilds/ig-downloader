@@ -1,6 +1,6 @@
 # Architecture: small core, independent providers
 
-The repository is a modular extraction engine with **Instagram as the maintained reference provider**. Reddit supports posts/galleries from available JSON with a clearly labeled metadata fallback. Facebook, TikTok, X/Twitter and Pinterest have experimental public-metadata adapters; `web` is the last-resort HTTPS page/direct-media fallback. Other providers can be contributed separately.
+The repository is a modular extraction engine with **Instagram as the maintained reference provider**. Reddit supports posts/galleries from available JSON with a clearly labeled metadata fallback. Facebook, TikTok, X/Twitter and Pinterest have experimental public-metadata adapters; YouTube reads directly exposed progressive player media or thumbnails; `web` is the last-resort HTTPS page/direct-media fallback. Other providers can be contributed separately.
 
 ## Runtime boundaries
 
@@ -50,4 +50,4 @@ The concrete interface is documented in `types/provider.d.ts`. We use CommonJS a
 
 ## What is not implemented
 
-A metadata page is not the same thing as a platform-native full archive. No generic JavaScript rendering, profile crawling, complete adaptive video muxing, protected-resource access, or all-sites guarantee exists. Provider fixtures prove parsing of known response shapes; they are not live acceptance. Reddit video fallback URLs may omit audio. YouTube currently reaches the generic metadata fallback, which does **not** claim the original YouTube stream.
+A metadata page is not the same thing as a platform-native full archive. No generic JavaScript rendering, profile crawling, complete adaptive video muxing, protected-resource access, or all-sites guarantee exists. Provider fixtures prove parsing of known response shapes; they are not live acceptance. Reddit video fallback URLs may omit audio. YouTube has an experimental adapter for already exposed progressive streams only; adaptive DASH, playlists, signature deciphering and DRM remain unsupported.

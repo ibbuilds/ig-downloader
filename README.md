@@ -28,7 +28,7 @@ sget providers  # show installed adapters
 
 `sget` is the platform-neutral command. `igd` and `ig-downloader` continue working with exactly the same options. Short options: `-u` URLs, `-n` preview, `-a` auto/original type, `-i` image only, `-V` prefer video, `-m` media mode, `-f` input file, `-j` concurrency, `-J` JSON, `-q` quiet. Batch requests deduplicate input and use shared command-scoped session/cache and globally bounded downloads.
 
-**Built-in sources:** Instagram, Reddit, Facebook, TikTok, X/Twitter, Pinterest, and generic public HTTPS pages/direct media. **Only Instagram has the existing full, site-specific extension and Story/Post/Reel handling.** Reddit resolves supported public post/gallery JSON when available. The other sources are experimental **public-metadata extractors**; they may only return previews/posters or fail when sites require login, JavaScript or signed streams. See [source coverage](#coverage-and-limitations). No site is claimed live-verified solely because its fixture tests pass.
+**Built-in sources:** Instagram, Reddit, Facebook, TikTok, X/Twitter, Pinterest, YouTube, and generic public HTTPS pages/direct media. **Only Instagram has the existing full, site-specific extension and Story/Post/Reel handling.** Reddit resolves supported public post/gallery JSON when available. The other sources are experimental **public-metadata extractors**; they may only return previews/posters or fail when sites require login, JavaScript or signed streams. See [source coverage](#coverage-and-limitations). No site is claimed live-verified solely because its fixture tests pass.
 
 The browser extension is still Instagram-specific: load unpacked at `chrome://extensions` using the repository folder containing `manifest.json`. Original inline buttons, ZIP, quality controls and filename templates are retained. CLI/extension media selection continues sharing `shared/media.js`.
 
@@ -74,9 +74,10 @@ Core maintainers maintain common actions, contracts, URL safety and packaging. P
 | TikTok | Public hydration video/image resources where exposed, plus metadata | Experimental; frequently changes |
 | X/Twitter | Public Twitter Card / Open Graph images and directly linked media | Experimental; often poster-only |
 | Pinterest | Public pin metadata images | Experimental; may be previews |
+| YouTube | Public progressive video with audio when directly exposed by player metadata; otherwise explicitly labeled poster | Experimental; many videos expose only adaptive/ciphered streams |
 | Other public HTTPS pages | Direct files, Open Graph and `-A` page media tag scan | Fallback; not a browser, crawler, or JavaScript renderer |
 
-Status is **not** a claim that a site's present-day endpoints are working. Automated provider CI uses synthetic fixtures. No recursive profile/playlist crawling, automatic DRM removal, YouTube adaptive-stream support, or private-media bypass exists.
+Status is **not** a claim that a site's present-day endpoints are working. Automated provider CI uses synthetic fixtures. No recursive profile/playlist crawling, automatic DRM removal, YouTube adaptive-stream muxing or signature deciphering, or private-media bypass exists.
 
 ### Authentication remains user-local
 
