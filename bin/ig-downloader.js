@@ -11,36 +11,38 @@ const { version } = require('../package.json');
 
 const COMMANDS = Object.freeze({ get: 'get', download: 'get', dl: 'get', urls: 'urls', url: 'urls', inspect: 'inspect', info: 'inspect', providers: 'providers', help: 'help' });
 const MAX_TARGETS = 2000;
-const HELP = `igd v${version} — fast Instagram media downloads (Node.js 20+)
+const HELP = `igd v${version} — Instagram downloads, one command (Node.js 20+)
 
 Usage:
-  igd <url-or-username> [options]                Download media
-  igd get <url...> [options]                     Download multiple targets
-  igd urls <url...> [options]                    Print direct media URLs
-  igd inspect <url...> [options]                 Preview media and provenance
-  igd get - [options]                           Read URLs/usernames from stdin
-  igd get --input-file links.txt [options]      Read a batch file
-  igd inspect --input-json response.json --json Process saved Instagram API JSON
-  igd providers                                  List supported sites
+  igd URL [URL...]             Download images/videos
+  igd @username               Download accessible Stories
+  igd -u URL                  Print direct media URLs
+  igd -n URL                  Inspect without downloading
+  igd -a URL                  Keep original Story media type
+  igd -i URL                  Images only (posters on video Stories)
+  igd -V URL                  Prefer video
+  igd -f links.txt            Batch from a file
+  cat links.txt | igd         Batch from stdin
 
 Options:
-  -m, --mode image|auto|video   Stories default to image; posts default to auto
-  -o, --output <directory>      Download destination (default: current directory)
-  -j, --concurrency <1..8>      Concurrent downloads (default: 4)
-  -f, --input-file <file>      Read newline-separated targets; - for stdin
-      --input-json <file>      Read a saved Instagram response, without API requests
-      --cookie-file <file>     Netscape cookie export or Cookie header
-      --url-only              Same as 'urls'
-      --dry-run               Same as 'inspect'
-      --json                  Machine-readable results
-  -q, --quiet                 Hide successful download messages
+  -u, --url-only              URL(s), no download
+  -n, --dry-run               Inspect media without saving
+  -a / -i / -V                Auto / image / prefer video
+  -m, --mode i|a|v            Image / auto / video (full names accepted)
+  -o, --output DIR            Destination directory
+  -j, --concurrency 1..8      Parallel transfers (default 4)
+  -f, --input-file FILE       Targets, one per line (- for stdin)
+  -J, --json                  JSON output
+  -q, --quiet                 Suppress successful download messages
   -h, --help                  Show help
   -v, --version               Show version
 
-The old 'ig-downloader' command remains available. 'image' never falls back to MP4;
-for video Stories an image is usually a poster, not the original photograph.
-Downloads require legitimate access; IG_COOKIE or --cookie-file may supply your session.
+Also supported: get, urls, inspect, providers, --cookie-file, --input-json,
+             ig-downloader (legacy executable). Inline flags such as -j8 work.
+Downloads require legitimate access. Image mode never falls back to MP4;
+for video Stories, the image may be a poster, not the original photograph.
 `;
+const MODE_ALIASES = Object.freeze({ i: MODES.IMAGE, a: MODES.AUTO, v: MODES.VIDEO });
 
 function parseArgs(argv) {
     const opts = { command: 'get', positional: [], concurrency: 4 };
@@ -51,10 +53,27 @@ function parseArgs(argv) {
         '--concurrency': 'concurrency', '-j': 'concurrency',
     };
     const toggles = {
-        '--url-only': 'urlOnly', '--dry-run': 'dryRun', '--json': 'json',
+        '--url-only': 'urlOnly', '-u': 'urlOnly',
+        '--dry-run': 'dryRun', '-n': 'dryRun',
+        '--json': 'json', '-J': 'json',
         '--quiet': 'quiet', '-q': 'quiet', '--help': 'help', '-h': 'help',
         '--version': 'version', '-v': 'version',
     };
+    const quickModes = { '-a': MODES.AUTO, '-i': MODES.IMAGE, '-V': MODES.VIDEO };
+    function setMode(raw) {
+        const mode = MODE_ALIASES[raw] || raw;
+        if (!Object.values(MODES).includes(mode)) throw new Error('Mode must be image, auto or video (i, a, v).');
+        if (opts.mode && opts.mode !== mode) throw new Error('Conflicting media modes. Choose one of image, auto or video.');
+        opts.mode = mode;
+    }
+    function assignValue(flag, value) {
+        if (value === '' || value === undefined || (value.startsWith('-') && value !== '-')) {
+            throw new Error('Missing value for ' + flag);
+        }
+        const name = valueFlags[flag];
+        if (name === 'mode') setMode(value);
+        else opts[name] = value;
+    }
     for (let i = 0; i < argv.length; i++) {
         const arg = argv[i];
         if (i === 0 && Object.hasOwn(COMMANDS, arg)) {
@@ -64,18 +83,27 @@ function parseArgs(argv) {
             break;
         } else if (Object.hasOwn(toggles, arg)) {
             opts[toggles[arg]] = true;
+        } else if (Object.hasOwn(quickModes, arg)) {
+            setMode(quickModes[arg]);
         } else if (Object.hasOwn(valueFlags, arg)) {
-            if (argv[i + 1] === undefined || (argv[i + 1].startsWith('-') && argv[i + 1] !== '-')) {
-                throw new Error('Missing value for ' + arg);
+            assignValue(arg, argv[++i]);
+        } else if (/^-[^-].+$/.test(arg) && Object.hasOwn(valueFlags, arg.slice(0, 2))) {
+            // Common POSIX-style compact values: -j8, -o./media, -mi.
+            assignValue(arg.slice(0, 2), arg.slice(2));
+        } else if (/^-[^-]{2,}$/.test(arg) && [...arg.slice(1)].every((letter) =>
+            Object.hasOwn(toggles, '-' + letter) || Object.hasOwn(quickModes, '-' + letter))) {
+            // Combine switch-only flags, e.g. -uq, -nJ or -aq.
+            for (const letter of arg.slice(1)) {
+                const flag = '-' + letter;
+                if (Object.hasOwn(toggles, flag)) opts[toggles[flag]] = true;
+                else setMode(quickModes[flag]);
             }
-            opts[valueFlags[arg]] = argv[++i];
         } else if (arg.startsWith('-') && arg !== '-') {
             throw new Error('Unknown option: ' + arg);
         } else {
             opts.positional.push(arg);
         }
     }
-    if (opts.mode && !Object.values(MODES).includes(opts.mode)) throw new Error('Mode must be image, auto or video.');
     if (!/^[1-8]$/.test(String(opts.concurrency))) throw new Error('Concurrency must be between 1 and 8.');
     opts.concurrency = Number(opts.concurrency);
     if (opts.inputJson && (opts.positional.length || opts.inputFile)) {
@@ -86,7 +114,6 @@ function parseArgs(argv) {
     if (opts.urlOnly && opts.dryRun) throw new Error('Choose either URLs or inspect, not both.');
     return opts;
 }
-
 async function loadTargets(args, stdin = process.stdin) {
     const targets = [];
     const readLines = (text) => {
@@ -109,6 +136,7 @@ async function loadTargets(args, stdin = process.stdin) {
         else targets.push(target);
     }
     if (args.inputFile) readLines(await readSource(args.inputFile));
+    if (!args.positional.length && !args.inputFile && !stdin.isTTY) readLines(await readSource('-'));
     if (!targets.length) throw new Error('Missing URL. Run igd --help or pass - for stdin.');
     const unique = [...new Set(targets)];
     if (unique.length > MAX_TARGETS) throw new Error(`Maximum ${MAX_TARGETS} targets per batch.`);
@@ -197,6 +225,10 @@ async function main(argv = process.argv.slice(2)) {
         return 0;
     }
 
+    if (!args.inputJson && !args.positional.length && !args.inputFile && process.stdin.isTTY) {
+        process.stdout.write(HELP);
+        return 0;
+    }
     const rawTargets = args.inputJson ? [args.inputJson] : await loadTargets(args);
     const parsed = args.inputJson ? null : rawTargets.map((raw) => {
         try {
