@@ -179,3 +179,52 @@ test('pipeline begins CDN transfer before slower independent target finishes res
     assert.ok(cdnFirst >= 0 && slowStory >= 0 && cdnFirst < slowStory,
         `expected the first CDN request before the slow Story request: ${JSON.stringify(calls)}`);
 });
+
+test('single-letter switches make the common commands concise and unambiguous', () => {
+    assert.equal(parseArgs(['@example', '-u']).urlOnly, true);
+    assert.equal(parseArgs(['@example', '-n']).dryRun, true);
+    assert.equal(parseArgs(['@example', '-i']).mode, 'image');
+    assert.equal(parseArgs(['@example', '-a']).mode, 'auto');
+    assert.equal(parseArgs(['@example', '-V']).mode, 'video');
+    assert.equal(parseArgs(['@example', '-m', 'v']).mode, 'video');
+    assert.equal(parseArgs(['@example', '-mi']).mode, 'image');
+    assert.equal(parseArgs(['@example', '-j8']).concurrency, 8);
+    assert.equal(parseArgs(['@example', '-o./media']).output, './media');
+    assert.equal(parseArgs(['@example', '-nJ']).json, true);
+    assert.equal(parseArgs(['@example', '-uq']).quiet, true);
+    assert.equal(parseArgs(['-v']).version, true); // do not break old version flag
+    assert.throws(() => parseArgs(['@example', '-i', '-V']), /Conflicting media modes/);
+    assert.throws(() => parseArgs(['@example', '-u', '-n']), /either URLs or inspect/);
+    assert.throws(() => parseArgs(['@example', '-jx']), /Concurrency/);
+    assert.throws(() => parseArgs(['@example', '-m', 'jpeg']), /Mode must/);
+});
+
+test('piped input requires no explicit get or - argument', async () => {
+    const url = 'https://www.instagram.com/stories/example/100/';
+    const targets = await loadTargets(parseArgs(['-u']), Readable.from([url + '\n', '# comment\n', url + '\n']));
+    assert.deepEqual(targets, [url]);
+    const result = spawnSync(process.execPath, [
+        '--require', path.resolve('test-support/mock-instagram-network.js'), CLI, '-u',
+    ], { input: url + '\n', encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.trim(), 'https://scontent.cdninstagram.com/100.jpg');
+});
+
+test('short preview and compact mode work with offline media payloads', async (t) => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'igd-short-'));
+    t.after(() => fs.rm(root, { recursive: true, force: true }));
+    const file = path.join(root, 'data.json');
+    await fs.writeFile(file, JSON.stringify({
+        type: 'post', data: { xdt_api__v1__media__shortcode__web_info: { items: [{
+            pk: '999', media_type: 2, user: { username: 'example' },
+            image_versions2: { candidates: [{ url: 'https://scontent.cdninstagram.com/a.jpg', width: 400, height: 500 }] },
+            video_versions: [{ url: 'https://video.fbcdn.net/b.mp4', width: 1080, height: 1920 }],
+        }] } },
+    }));
+    const result = spawnSync(process.execPath, [CLI, '-nJ', '--input-json', file, '-mi'], { encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    const data = JSON.parse(result.stdout);
+    assert.equal(data.mode, 'image');
+    assert.equal(data.media[0].sourceKind, 'video-poster');
+    assert.equal(data.media[0].mediaType, 'image');
+});
