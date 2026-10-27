@@ -24,32 +24,45 @@ cd ig-downloader
 npm link
 ```
 
-### Fast commands: `igd`
+### Quick CLI: one command
 
-`npm link` installs both commands: **`igd`** (recommended) and the backwards-compatible **`ig-downloader`**. No alias configuration or extra package is needed. The CLI reports version **0.2.0**; the browser extension retains its independent manifest version.
+Run `npm link` once to install **`igd`** (recommended) and the backwards-compatible **`ig-downloader`**. No custom shell alias or additional dependency is required. `igd` accepts a URL, several URLs, or an accessible Instagram username directly.
+
+| Goal | Command |
+|---|---|
+| Download a Post, Reel, Story or Highlight | `igd URL` |
+| Download multiple links | `igd URL1 URL2 URL3` |
+| Get direct media URLs (no download) | `igd -u URL` |
+| Preview metadata and provenance | `igd -n URL` |
+| Get JSON preview | `igd -nJ URL` |
+| Keep original media type for Stories | `igd -a URL` |
+| Images only (video Stories may yield posters) | `igd -i URL` |
+| Prefer video | `igd -V URL` |
+| Download to a folder | `igd URL -o ./media` |
+| Bounded parallel transfers | `igd URL1 URL2 -j8` |
+| Batch from file | `igd -f links.txt` |
+| Batch from a shell pipe | `cat links.txt | igd` |
+
+For example:
 
 ```sh
-igd 'https://www.instagram.com/reel/SHORTCODE/'             # download
-igd get 'https://www.instagram.com/p/SHORTCODE/' -o ./media
-igd urls 'https://www.instagram.com/stories/example/1234567890/'
-igd inspect 'https://www.instagram.com/stories/example/1234567890/' --json
-igd 'https://www.instagram.com/reel/SHORTCODE/' -m video -j 4
-igd get URL1 URL2 URL3 -j 8 -o ./downloads                # batch
-igd get --input-file links.txt --json                       # file batch
-cat links.txt | igd get - -q                                # stdin / shell pipeline
-igd providers                                               # installed providers
-igd --help
+igd "https://www.instagram.com/reel/SHORTCODE/"
+igd "https://www.instagram.com/stories/example/1234567890/" -a
+igd -u "https://www.instagram.com/p/SHORTCODE/"
+igd -nJ "https://www.instagram.com/p/SHORTCODE/"
+igd -f links.txt -o downloads -j4
+cat links.txt | igd -q
 ```
 
-Subcommands are optional: `igd URL` downloads media; `get`, `urls`, `inspect` and `providers` are explicit alternatives. Legacy flags `--url-only` and `--dry-run` remain available. Short options include `-m` (mode), `-o` (output), `-j` (concurrency), `-f` (input file), and `-q` (quiet).
+Short flags: `-u` URLs, `-n` inspect, `-a` auto/original type, `-i` image, `-V` prefer video, `-o` output, `-j` concurrency, `-f` input file, `-J` JSON, `-q` quiet. Flags may follow or precede URLs. Compact forms such as `-j8`, `-mi` and `-nJ` work. Lowercase `-v` still displays the version; uppercase `-V` selects video.
 
-For batches, use multiple targets or a UTF-8 file with one URL/username per line. Blank lines, lines beginning with `#` and repeated targets are skipped. `-` reads stdin; the maximum batch size is 2,000 distinct targets. GraphQL resolution uses at most three workers, while `-j` bounds total CDN downloads to 1–8 transfers. The default is 4, adjustable downward if Instagram limits requests. Downloads start when a target resolves, rather than waiting for the entire batch; a global FIFO limiter keeps CDN concurrency bounded and backpressure reduces the time signed URLs sit in memory.
+**Defaults:** Stories and Highlights use image mode (which may return a video poster, *not* the original photograph); Posts and Reels preserve their original media type. `-m i`, `-m a` and `-m v` are shorthand for the full names. Conflicting media modes are rejected.
 
-`--json` emits the established single-target shape on success and a `{version, results, errors}` envelope for batches or per-target resolution failures. Failures return a nonzero exit code while other batch items continue. `igd urls --json` returns media metadata rather than mixing raw URL lines with JSON output.
+The original `get`, `urls` and `inspect` subcommands, together with legacy `--url-only`, `--dry-run` and `--json`, remain supported. For scripts, `--input-json FILE` processes a saved authorized Instagram API response without calling the live API.
 
-The default mode is **image** for Stories/highlights and **auto** for posts/Reels. `image` **never silently downloads an MP4**. Select `auto` to download the original Story media type. `--mode video` prefers video but uses the still image if no video is present.
+A UTF-8 target file contains one URL or username per line. Empty lines, lines starting with `#` and duplicate targets are ignored (maximum 2,000 unique targets). Piped stdin needs no `get -` argument; explicit `igd -` remains supported. Target resolution uses up to three workers and `-j` limits total CDN transfers to 1–8 (default: 4). Successful single-target JSON preserves the established schema; batches return a versioned result/error envelope. A failed batch target is reported without stopping the others.
 
-Direct links are short-lived signed CDN URLs. `inspect` does not download media. Repeated Stories from the same account share session setup and matching Instagram API responses within one command, reducing duplicate requests.
+Signed CDN URLs can expire, and live Instagram endpoints can change. Download only media you can legitimately access.
 
 ### Authentication and permissions
 
