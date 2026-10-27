@@ -1,0 +1,52 @@
+name: Provider checks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'providers/**'
+      - 'core/**'
+      - 'lib/providers.js'
+      - 'lib/download.js'
+      - 'tests/providers/**'
+      - 'scripts/check-providers.js'
+      - '.github/workflows/provider-ci.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'providers/**'
+      - 'core/**'
+      - 'lib/providers.js'
+      - 'lib/download.js'
+      - 'tests/providers/**'
+      - 'scripts/check-providers.js'
+      - '.github/workflows/provider-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.providers.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: providers
+        run: echo "matrix=$(node scripts/check-providers.js --matrix)" >> "$GITHUB_OUTPUT"
+
+  adapter:
+    name: Provider / ${{ matrix.provider }}
+    needs: discover
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.discover.outputs.matrix) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/check-providers.js --check "${{ matrix.provider }}"

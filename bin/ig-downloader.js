@@ -4,60 +4,55 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { readCookie, getRawItemsFromResponse } = require('../lib/instagram.js');
-const { resolveTarget, PROVIDERS } = require('../lib/providers.js');
-const { downloadMedia, validateMediaUrl } = require('../lib/download.js');
-const { MODES, selectMedia } = require('../shared/media.js');
+const { resolveTarget, PROVIDERS, loadPlugin } = require('../lib/providers.js');
+const { normalizeResource } = require('../core/provider.js');
+const { downloadMedia } = require('../lib/download.js');
+const { MODES } = require('../shared/media.js');
 const { version } = require('../package.json');
 
 const COMMANDS = Object.freeze({ get: 'get', download: 'get', dl: 'get', urls: 'urls', url: 'urls', inspect: 'inspect', info: 'inspect', providers: 'providers', help: 'help' });
 const MAX_TARGETS = 2000;
-const HELP = `igd v${version} — Instagram downloads, one command (Node.js 20+)
+const HELP = `sget / igd v${version} — modular media extraction (Node.js 20+)
 
 Usage:
-  igd URL [URL...]             Download images/videos
-  igd @username               Download accessible Stories
-  igd -u URL                  Print direct media URLs
-  igd -n URL                  Inspect without downloading
-  igd -a URL                  Keep original Story media type
-  igd -i URL                  Images only (posters on video Stories)
-  igd -V URL                  Prefer video
-  igd -f links.txt            Batch from a file
-  cat links.txt | igd         Batch from stdin
+  sget URL [URL...]            Download media (Instagram built in)
+  sget -u URL                 Show media URL(s)
+  sget -n URL                 Inspect without downloading
+  sget -a URL                 Preserve original Story media type
+  sget -i URL                 Images only
+  sget -V URL                 Prefer video
+  sget -f links.txt           Batch file
+  cat links.txt | sget        Pipe targets from stdin
+  sget --plugin ./adapter.js URL  Explicitly load a trusted provider
 
 Options:
-  -u, --url-only              URL(s), no download
-  -n, --dry-run               Inspect media without saving
-  -a / -i / -V                Auto / image / prefer video
-  -m, --mode i|a|v            Image / auto / video (full names accepted)
-  -o, --output DIR            Destination directory
-  -j, --concurrency 1..8      Parallel transfers (default 4)
-  -f, --input-file FILE       Targets, one per line (- for stdin)
-  -J, --json                  JSON output
-  -q, --quiet                 Suppress successful download messages
-  -h, --help                  Show help
-  -v, --version               Show version
+  -u / -n / -a / -i / -V       URLs / inspect / auto / image / video
+  -m i|a|v                   Media mode, full names accepted
+  -o DIR                     Output directory
+  -j 1..8                    Parallel downloads (default 4)
+  -f FILE                    Newline-delimited targets (- for stdin)
+  -J                         JSON output
+  -q                         Quiet output
+      --plugin MODULE        Opt-in third-party provider (executes its code)
+  -h / -v                    Help / version
 
-Also supported: get, urls, inspect, providers, --cookie-file, --input-json,
-             ig-downloader (legacy executable). Inline flags such as -j8 work.
-Downloads require legitimate access. Image mode never falls back to MP4;
-for video Stories, the image may be a poster, not the original photograph.
+Old 'igd' and 'ig-downloader' executable names and long options remain compatible.
+Images from video Stories may be previews, not originals.
 `;
 const MODE_ALIASES = Object.freeze({ i: MODES.IMAGE, a: MODES.AUTO, v: MODES.VIDEO });
 
 function parseArgs(argv) {
-    const opts = { command: 'get', positional: [], concurrency: 4 };
+    const opts = { command: 'get', positional: [], concurrency: 4, plugins: [] };
     const valueFlags = {
         '--mode': 'mode', '-m': 'mode', '--output': 'output', '-o': 'output',
         '--cookie-file': 'cookieFile', '--input-json': 'inputJson',
         '--input-file': 'inputFile', '-f': 'inputFile',
-        '--concurrency': 'concurrency', '-j': 'concurrency',
+        '--concurrency': 'concurrency', '-j': 'concurrency', '--plugin': 'plugin',
     };
     const toggles = {
-        '--url-only': 'urlOnly', '-u': 'urlOnly',
-        '--dry-run': 'dryRun', '-n': 'dryRun',
-        '--json': 'json', '-J': 'json',
-        '--quiet': 'quiet', '-q': 'quiet', '--help': 'help', '-h': 'help',
-        '--version': 'version', '-v': 'version',
+        '--url-only': 'urlOnly', '-u': 'urlOnly', '--dry-run': 'dryRun', '-n': 'dryRun',
+        '--json': 'json', '-J': 'json', '--quiet': 'quiet', '-q': 'quiet',
+        '--help': 'help', '-h': 'help', '--version': 'version', '-v': 'version',
     };
     const quickModes = { '-a': MODES.AUTO, '-i': MODES.IMAGE, '-V': MODES.VIDEO };
     function setMode(raw) {
@@ -72,6 +67,7 @@ function parseArgs(argv) {
         }
         const name = valueFlags[flag];
         if (name === 'mode') setMode(value);
+        else if (name === 'plugin') opts.plugins.push(value);
         else opts[name] = value;
     }
     for (let i = 0; i < argv.length; i++) {
@@ -88,11 +84,9 @@ function parseArgs(argv) {
         } else if (Object.hasOwn(valueFlags, arg)) {
             assignValue(arg, argv[++i]);
         } else if (/^-[^-].+$/.test(arg) && Object.hasOwn(valueFlags, arg.slice(0, 2))) {
-            // Common POSIX-style compact values: -j8, -o./media, -mi.
             assignValue(arg.slice(0, 2), arg.slice(2));
         } else if (/^-[^-]{2,}$/.test(arg) && [...arg.slice(1)].every((letter) =>
             Object.hasOwn(toggles, '-' + letter) || Object.hasOwn(quickModes, '-' + letter))) {
-            // Combine switch-only flags, e.g. -uq, -nJ or -aq.
             for (const letter of arg.slice(1)) {
                 const flag = '-' + letter;
                 if (Object.hasOwn(toggles, flag)) opts[toggles[flag]] = true;
@@ -114,6 +108,7 @@ function parseArgs(argv) {
     if (opts.urlOnly && opts.dryRun) throw new Error('Choose either URLs or inspect, not both.');
     return opts;
 }
+
 async function loadTargets(args, stdin = process.stdin) {
     const targets = [];
     const readLines = (text) => {
@@ -184,16 +179,16 @@ function createLimiter(limit) {
     });
 }
 
-function planMedia(items, mode) {
+function planMedia(items, mode, provider = PROVIDERS.instagram) {
     let unavailable = 0;
     const available = [];
     for (const [index, item] of items.entries()) {
-        const media = selectMedia(item, mode);
+        const media = normalizeResource(provider.select(item, mode));
         if (!media) {
             unavailable++;
             continue;
         }
-        validateMediaUrl(media.url);
+        provider.validateUrl(media.url);
         const info = {
             index,
             id: media.id,
@@ -211,6 +206,7 @@ function planMedia(items, mode) {
 
 async function main(argv = process.argv.slice(2)) {
     const args = parseArgs(argv);
+    for (const specifier of args.plugins) loadPlugin(specifier);
     if (args.help || args.command === 'help') {
         process.stdout.write(HELP);
         return 0;
@@ -244,27 +240,28 @@ async function main(argv = process.argv.slice(2)) {
     const scheduleDownload = createLimiter(args.concurrency);
     const resolved = await mapLimit(rawTargets, Math.min(3, args.concurrency), async (raw, targetIndex) => {
         let result;
-        let providerId = 'instagram';
+        let provider = PROVIDERS.instagram;
         let target = null;
         if (args.inputJson) {
             result = await loadOffline(args.inputJson);
         } else {
             const source = parsed[targetIndex];
             if (!source.ok) throw new Error(source.error);
-            providerId = source.provider.id;
+            provider = source.provider;
             target = source.target;
-            if (!sessions.has(providerId)) sessions.set(providerId, source.provider.createSession({ cookie }));
-            result = await source.provider.resolve(target, { cookie, session: sessions.get(providerId) });
+            if (!sessions.has(provider.id)) sessions.set(provider.id, provider.createSession?.({ cookie }) || {});
+            result = await provider.resolve(target, { cookie, session: sessions.get(provider.id) });
         }
-        const mode = args.mode || (target?.type === 'post' || result.sourceType === 'post' ? MODES.AUTO : MODES.IMAGE);
-        const { available, unavailable } = planMedia(result.items, mode);
-        const entry = { target: raw, provider: providerId, mode, username: result.username, unavailable, available, saved: [], errors: [] };
+        const mode = args.mode || (provider.id !== 'instagram' || target?.type === 'post' || result.sourceType === 'post' ? MODES.AUTO : MODES.IMAGE);
+        const { available, unavailable } = planMedia(result.items, mode, provider);
+        const entry = { target: raw, provider: provider.id, validateUrl: provider.validateUrl, mode, username: result.username, unavailable, available, saved: [], errors: [] };
         if (!args.urlOnly && !args.dryRun) {
             // Start transferring as soon as this target resolves. Awaiting per target
             // provides backpressure instead of accumulating expiring CDN links.
             const downloaded = await Promise.all(available.map((asset) => scheduleDownload(async () => {
                 const outcome = await downloadMedia(asset.media, {
                     username: entry.username, index: asset.info.index, output: args.output || '.',
+                    validateUrl: entry.validateUrl,
                 });
                 return { ...asset.info, path: path.resolve(outcome.path), bytes: outcome.bytes, contentType: outcome.contentType };
             }).then((value) => ({ ok: true, value }), (error) => ({ ok: false, error: error?.message || String(error) }))));

@@ -2,7 +2,7 @@
   "name": "ig-downloader",
   "version": "0.2.0",
   "private": true,
-  "description": "Cross-platform Instagram media CLI and image-first browser extension",
+  "description": "Lightweight modular social-media resource extraction CLI and Instagram browser extension",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -13,12 +13,16 @@
   },
   "bin": {
     "ig-downloader": "bin/ig-downloader.js",
-    "igd": "bin/ig-downloader.js"
+    "igd": "bin/ig-downloader.js",
+    "sget": "bin/ig-downloader.js"
   },
   "scripts": {
-    "test": "node --test",
+    "test": "node scripts/run-tests.js",
     "check": "npm test && npm run check:syntax && npm run check:extension",
-    "check:syntax": "node --check bin/ig-downloader.js && node --check lib/instagram.js && node --check lib/download.js && node --check shared/media.js && node --check lib/targets.js && node --check lib/providers.js",
-    "check:extension": "node scripts/check-extension.js"
+    "check:syntax": "node --check bin/ig-downloader.js && node --check lib/instagram.js && node --check lib/download.js && node --check shared/media.js && node --check lib/targets.js && node --check lib/providers.js && node --check core/provider.js && node --check core/url-policy.js && node --check providers/instagram/index.js && node --check scripts/check-providers.js && node --check scripts/check-provider-live.js && node --check scripts/create-provider.js",
+    "check:extension": "node scripts/check-extension.js",
+    "check:providers": "node scripts/check-providers.js --all",
+    "check:provider": "node scripts/check-providers.js --check",
+    "create:provider": "node scripts/create-provider.js"
   }
 }

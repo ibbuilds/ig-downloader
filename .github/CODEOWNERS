@@ -1,0 +1,5 @@
+# Request core security and CI review; provider-specific maintainers can contribute via PR.
+/core/ @ibbuilds
+/lib/download.js @ibbuilds
+/.github/workflows/ @ibbuilds
+/bin/ @ibbuilds
