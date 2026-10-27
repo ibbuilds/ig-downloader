@@ -33,8 +33,4 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Show baseline formatting differences
-        run: |
-          npx --yes prettier --write ./src/js/utils.js
-          git diff -- ./src/js/utils.js
-          git diff --exit-code -- ./src/js/utils.js
+      - run: make format-check
