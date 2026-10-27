@@ -1,6 +1,6 @@
 {
-    "name": "Instagram Downloader",
-    "description": "Download Photos and Videos from Instagram Post, Reels, TV, Stories",
+    "name": "ig-downloader",
+    "description": "Download Instagram media with configurable image-first Stories and transparent source selection",
     "version": "6.0.5",
     "manifest_version": 3,
     "icons": {
@@ -9,24 +9,36 @@
         "48": "icons/icon48.png",
         "128": "icons/icon128.png"
     },
-    "host_permissions": ["https://www.instagram.com/*", "https://*.fbcdn.net/*", "https://*.cdninstagram.com/*"],
+    "host_permissions": [
+        "https://www.instagram.com/*",
+        "https://*.fbcdn.net/*",
+        "https://*.cdninstagram.com/*"
+    ],
     "action": {
         "default_icon": "icons/icon128.png"
     },
     "content_scripts": [
         {
-            "matches": ["https://www.instagram.com/*"],
+            "matches": [
+                "https://www.instagram.com/*"
+            ],
             "js": [
+                "shared/media.js",
                 "src/js/download-ui-preferences.js",
                 "src/js/video-download-preferences.js",
+                "src/js/story-media-preferences.js",
                 "src/js/filename-preferences.js",
                 "src/js/settings-ui.js"
             ],
-            "css": ["src/style/style.css"],
+            "css": [
+                "src/style/style.css"
+            ],
             "run_at": "document_start"
         },
         {
-            "matches": ["https://www.instagram.com/*"],
+            "matches": [
+                "https://www.instagram.com/*"
+            ],
             "js": [
                 "src/js/utils.js",
                 "src/js/dash.js",
@@ -41,7 +53,9 @@
             ]
         },
         {
-            "matches": ["https://www.instagram.com/*"],
+            "matches": [
+                "https://www.instagram.com/*"
+            ],
             "js": [
                 "src/js/global/utils.js",
                 "src/js/global/home-scroll-handler.js",
@@ -55,8 +69,13 @@
     ],
     "web_accessible_resources": [
         {
-            "resources": ["src/muxer/*", "lib/mp4box/*"],
-            "matches": ["https://www.instagram.com/*"]
+            "resources": [
+                "src/muxer/*",
+                "lib/mp4box/*"
+            ],
+            "matches": [
+                "https://www.instagram.com/*"
+            ]
         }
     ]
 }

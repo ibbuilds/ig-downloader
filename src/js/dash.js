@@ -55,14 +55,6 @@ function getBestDashMedia(item) {
     };
 }
 
-function selectLargestProgressive(items) {
-    return items.reduce((best, current) => {
-        const bestPixels = Number(best.width || 0) * Number(best.height || 0);
-        const currentPixels = Number(current.width || 0) * Number(current.height || 0);
-        return currentPixels > bestPixels ? current : best;
-    }, items[0]);
-}
-
 function getOriginalMediaFilename(mediaUrl) {
     try {
         const pathname = new URL(mediaUrl).pathname;
@@ -73,27 +65,19 @@ function getOriginalMediaFilename(mediaUrl) {
     }
 }
 
-function extractMediaData(item) {
-    const isVideo = item['media_type'] !== 1;
-    const mediaItems = isVideo ? item['video_versions'] : item['image_versions2'].candidates;
-    if (!mediaItems?.length) return null;
-    const progressive = selectLargestProgressive(mediaItems);
-    const preview = isVideo ? selectLargestProgressive(item['image_versions2']?.candidates ?? []) : progressive;
-    const dash = isVideo ? getBestDashMedia(item) : null;
+function extractMediaData(item, mode = IGDownloaderMedia.MODES.AUTO) {
+    const media = IGDownloaderMedia.selectMedia(item, mode);
+    if (!media) return null;
+    const dash = media.isVideo ? getBestDashMedia(item) : null;
     return {
-        url: progressive.url,
-        previewUrl: preview?.url ?? '',
-        isVideo,
-        id: item.pk,
-        originalFilename: getOriginalMediaFilename(progressive.url),
-        width: dash?.width || Number(progressive.width || 0),
-        height: dash?.height || Number(progressive.height || 0),
-        progressiveWidth: Number(progressive.width || 0),
-        progressiveHeight: Number(progressive.height || 0),
+        ...media,
+        originalFilename: getOriginalMediaFilename(media.url),
+        width: dash?.width || media.width,
+        height: dash?.height || media.height,
+        progressiveWidth: media.width,
+        progressiveHeight: media.height,
         videoBitrate: dash?.bandwidth || 0,
         videoCodec: dash?.videoCodec || '',
-        format: resolveMediaFormat(progressive.url) ?? (isVideo ? 'mp4' : 'jpg'),
         dash,
-        takenAt: item['taken_at'],
     };
 }

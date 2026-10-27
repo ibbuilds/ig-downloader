@@ -352,7 +352,7 @@ function findMediaByRenderedUrl(data, mediaUrl) {
     const selectedCacheId = getMediaCacheId(mediaUrl);
     if (selectedCacheId) {
         const mediaByCacheId = data.media.find((item) =>
-            [item.url, item.previewUrl].some(
+            [item.url, item.previewUrl, item.videoUrl].some(
                 (candidateUrl) =>
                     getMediaId(item.id) === selectedCacheId || getMediaCacheId(candidateUrl) === selectedCacheId,
             ),
@@ -364,7 +364,7 @@ function findMediaByRenderedUrl(data, mediaUrl) {
     if (!selectedPath) return null;
     return (
         data.media.find((item) =>
-            [item.url, item.previewUrl].some((candidateUrl) => getMediaUrlPath(candidateUrl) === selectedPath),
+            [item.url, item.previewUrl, item.videoUrl].some((candidateUrl) => getMediaUrlPath(candidateUrl) === selectedPath),
         ) ?? null
     );
 }

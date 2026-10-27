@@ -121,7 +121,7 @@ async function downloadStoryPhotos(type = 'stories') {
         media: [],
     };
     json.items.forEach((item) => {
-        const media = extractMediaData(item);
+        const media = extractMediaData(item, storyMediaPreferences.mode);
         if (media) data.media.push(media);
     });
     return data;
