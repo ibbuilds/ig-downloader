@@ -31,3 +31,13 @@ Read [provider-development](docs/provider-development.md), [architecture](docs/a
 ## Open-source and release review
 
 All contributions remain MIT-licensed; retain upstream and vendored notices. Run `npm run check:package` after changing runtime files, assets or the package allowlist. Review GOVERNANCE.md, SECURITY.md and docs/releases.md. Public PRs must never need session secrets. Repository feature settings are separate from committed templates; see docs/repository-independence.md.
+
+## Complete PR and branch lifecycle
+
+1. Start focused work in a descriptive short-lived branch based on up-to-date `main`. Do not use `main` as a development branch.
+2. Open **one PR per coherent change**. Attach regression tests, describe how behavior was verified, and request the appropriate review. Repair failing CI on **the same branch and PR**; do not accumulate replacement PRs.
+3. Merge only after required CI and review. Verify the resulting `main` workflow before calling the work finished. If a PR cannot proceed, close it with a documented reason.
+4. Delete the merged head branch. The trusted `Clean merged branches` workflow automatically prunes **only** internal branches whose current SHA equals the head SHA recorded on a merged PR, and skips open PRs and the default branch. A failed cleanup job must be investigated rather than called a success.
+5. Retire abandoned branches after their work is either incorporated or explicitly closed. Direct commits to `main` are exceptional hotfixes only, with documented justification and immediate verification.
+
+The workflow is not a replacement for protecting `main`: configure repository rules to require PR reviews and CI checks (see `docs/repository-independence.md`).

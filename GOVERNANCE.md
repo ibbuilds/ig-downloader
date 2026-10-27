@@ -8,7 +8,7 @@ The core maintainer owns the CLI, provider contract, security policies, packagin
 
 ## Decisions and changes
 
-Use a focused branch and PR. Describe the problem, tests, compatibility impact and any new network destinations. Core/security changes require maintainer review. CODEOWNERS requests reviewers but does not enforce approval by itself; enforcement requires repository rules. No PR may use untrusted code with live credentials. Keep the existing aliases and resource-provenance semantics unless a breaking change is explicitly documented.
+Use a focused branch and PR. Describe the problem, tests, compatibility impact and any new network destinations. Fix failures on the same PR; merge verified changes, check post-merge CI, and close the branch lifecycle. Closed-but-unmerged PRs require a documented outcome; merged head branches should be deleted. Direct feature development on `main` is not the standard workflow. Core/security changes require maintainer review. CODEOWNERS requests reviewers but does not enforce approval by itself; enforcement requires repository rules. No PR may use untrusted code with live credentials. Keep the existing aliases and resource-provenance semantics unless a breaking change is explicitly documented.
 
 Merges require passing core, provider and packaging checks for the reviewed head. A maintainer may document an exceptional override, but must not describe failing or skipped checks as passing. Releases are initially drafts; publication is a separate decision after reviewing the artifacts and known limitations.
 
@@ -23,3 +23,7 @@ Contributions are accepted under the repository's MIT license; retain upstream a
 ## Service expectations
 
 Maintenance is best effort. There is no response-time guarantee, uptime commitment or promise to bypass platform restrictions. The software is provided under the warranty disclaimer in LICENSE.
+
+## Lifecycle automation
+
+A dedicated, trusted `push` workflow prunes merged internal branches after validating that the current branch commit exactly matches the head commit recorded on a merged PR. Open PR branches, changed/reused branches, fork branches and the default branch are excluded. Cleanup runs with narrowly scoped `contents: write` permissions on code already merged into `main`, never on untrusted PR code. Its failures must be addressed.
