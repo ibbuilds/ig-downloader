@@ -52,6 +52,8 @@ test('metadata provenance is preserved and audio resources are labeled as audio'
     assert.equal(items[0].sourceKind, 'audio');
     const chosen = planMedia(items, 'auto', PROVIDERS.web);
     assert.equal(chosen.available[0].info.mediaType, 'audio');
+    const { normalizeResource } = require('../core/provider.js');
+    assert.throws(() => normalizeResource({ id: 'x', url: 'https://cdn.example.org/x.mp4', isVideo: false, kind: 'video', sourceKind: 'video', format: 'mp4' }), /agree with isVideo/);
     assert.equal(planMedia(items, 'image', PROVIDERS.web).available.length, 1);
 });
 

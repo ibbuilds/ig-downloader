@@ -38,7 +38,7 @@ The `Provider checks` workflow dynamically creates an independent job for every 
 
 ## Live checks and ownership
 
-The scaffold also creates `<provider>-live.yml`, scheduled weekly and manually runnable. Set the repository variable `IGD_EXAMPLE_TEST_URL` to a stable content URL accessible to the CI runner, and optionally set the secret `IGD_EXAMPLE_COOKIE` for a test account you control. Missing settings cause the live job to be **skipped**, not reported as validated. Never expose credentials to PR workflows. Live checks only test resolution/selection, not complete media download.
+The scaffold also creates `<provider>-live.yml`, scheduled weekly and manually runnable. The optional GitHub public-only check accepts a non-sensitive `public_url` value via manual dispatch, or the `SGET_EXAMPLE_PUBLIC_TEST_URL` repository variable for scheduled smoke checks. **Do not configure session credentials in repository secrets.** Tests needing login should run on the contributor’s own device using their own session. An unconfigured live job is **skipped, not validated**. Live checks only test resource resolution/selection, not the complete download.
 
 Your provider README must disclose its supported resource types and a status: `maintained`, `experimental`, `broken` or `unmaintained`. Contributors can propose fixes via focused PRs. Maintainers review security and contract compliance but do not promise that every provider will keep working forever.
 

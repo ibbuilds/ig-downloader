@@ -46,7 +46,10 @@ function extractPostMedia(data) {
             else if (source?.u) add(source.u, false, 'image');
         }
     }
-    if (data.url_overridden_by_dest) add(data.url_overridden_by_dest, false, 'image');
+    if (data.url_overridden_by_dest) {
+        const isVideo = /\.(?:mp4|mov|webm)(?:$|[?#])/i.test(data.url_overridden_by_dest);
+        add(data.url_overridden_by_dest, isVideo, isVideo ? 'video' : 'image');
+    }
     // Some posts only expose a resized preview; never describe it as the original.
     if (!found.length && data.preview?.images?.[0]?.source?.url) {
         add(data.preview.images[0].source.url, false, 'preview-image');

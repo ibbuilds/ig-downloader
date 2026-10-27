@@ -16,14 +16,15 @@ const MAX_INPUT_BYTES = 2 * 1024 * 1024;
 const HELP = `sget / igd v${version} — modular media extraction (Node.js 20+)
 
 Usage:
-  sget URL [URL...]            Download media (Instagram built in)
+  sget URL [URL...]            Download available media from supported sites
   sget -u URL                 Show media URL(s)
   sget -n URL                 Inspect without downloading
   sget -a URL                 Preserve original Story media type
   sget -i URL                 Images only
   sget -V URL                 Prefer video
   sget -f links.txt           Batch file
-  sget -A URL                  Also capture visible image/video tags
+  sget -A URL                  Also scan visible page media tags
+  sget providers               List installed adapters
   cat links.txt | sget        Pipe targets from stdin
   sget --plugin ./adapter.js URL  Explicitly load a trusted provider
 
@@ -40,7 +41,7 @@ Options:
   -h / -v                    Help / version
 
 Old 'igd' and 'ig-downloader' executable names and long options remain compatible.
-Images from video Stories may be previews, not originals.
+Site support varies. Metadata may expose a preview, not the original file.
 `;
 const MODE_ALIASES = Object.freeze({ i: MODES.IMAGE, a: MODES.AUTO, v: MODES.VIDEO });
 
@@ -252,6 +253,7 @@ async function main(argv = process.argv.slice(2)) {
     const credentials = new Map();
     async function cookieFor(provider) {
         if (credentials.has(provider.id)) return credentials.get(provider.id);
+        const pending = (async () => {
         let cookie = '';
         if (provider.id === 'instagram') cookie = await readCookie(args);
         else if (provider.id !== 'web') {
@@ -264,10 +266,21 @@ async function main(argv = process.argv.slice(2)) {
                 if (cookie.includes('\n') || cookie.includes('\r')) throw new Error('Non-Instagram cookies must be a single raw Cookie header.');
             }
         }
-        credentials.set(provider.id, cookie);
         return cookie;
+        })().catch((error) => { credentials.delete(provider.id); throw error; });
+        credentials.set(provider.id, pending);
+        return pending;
     }
     const sessions = new Map();
+    const throttledProviders = new Set();
+    function guard(provider) {
+        if (throttledProviders.has(provider.id)) {
+            throw new Error(`${provider.name} requests paused after HTTP 429. Retry later.`);
+        }
+    }
+    function noticeRateLimit(provider, error) {
+        if (/429|rate.?limit/i.test(String(error?.message || ''))) throttledProviders.add(provider.id);
+    }
     const scheduleDownload = createLimiter(args.concurrency);
     const resolved = await mapLimit(rawTargets, Math.min(3, args.concurrency), async (raw, targetIndex) => {
         let result;
@@ -282,7 +295,13 @@ async function main(argv = process.argv.slice(2)) {
             target = source.target;
             const cookie = await cookieFor(provider);
             if (!sessions.has(provider.id)) sessions.set(provider.id, provider.createSession?.({ cookie }) || {});
-            result = await provider.resolve(target, { cookie, session: sessions.get(provider.id), all: Boolean(args.all) });
+            guard(provider);
+            try {
+                result = await provider.resolve(target, { cookie, session: sessions.get(provider.id), all: Boolean(args.all) });
+            } catch (error) {
+                noticeRateLimit(provider, error);
+                throw error;
+            }
         }
         const mode = args.mode || (provider.id !== 'instagram' || target?.type === 'post' || result.sourceType === 'post' ? MODES.AUTO : MODES.IMAGE);
         const { available, unavailable } = planMedia(result.items, mode, provider);
@@ -291,11 +310,17 @@ async function main(argv = process.argv.slice(2)) {
             // Start transferring as soon as this target resolves. Awaiting per target
             // provides backpressure instead of accumulating expiring CDN links.
             const downloaded = await Promise.all(available.map((asset) => scheduleDownload(async () => {
-                const outcome = await downloadMedia(asset.media, {
-                    username: entry.username, index: asset.info.index, output: args.output || '.',
-                    validateUrl: entry.validateUrl,
-                });
-                return { ...asset.info, path: path.resolve(outcome.path), bytes: outcome.bytes, contentType: outcome.contentType };
+                guard(provider);
+                try {
+                    const outcome = await downloadMedia(asset.media, {
+                        username: entry.username, index: asset.info.index, output: args.output || '.',
+                        validateUrl: entry.validateUrl,
+                    });
+                    return { ...asset.info, path: path.resolve(outcome.path), bytes: outcome.bytes, contentType: outcome.contentType };
+                } catch (error) {
+                    noticeRateLimit(provider, error);
+                    throw error;
+                }
             }).then((value) => ({ ok: true, value }), (error) => ({ ok: false, error: error?.message || String(error) }))));
             downloaded.forEach((result, index) => {
                 if (result.ok) entry.saved.push(result.value);
