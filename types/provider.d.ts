@@ -4,6 +4,8 @@ export interface MediaResource {
     id?: string;
     url: string;
     isVideo: boolean;
+    /** Optional explicit resource type; audio can coexist with legacy isVideo:false. */
+    kind?: 'image' | 'video' | 'audio';
     sourceKind: string;
     format: string;
     width?: number;
@@ -20,10 +22,14 @@ export interface ProviderContext {
     cookie?: string;
     session?: unknown;
     fetchImpl?: typeof fetch;
+    /** Include additional page media tags; not a recursive crawler. */
+    all?: boolean;
 }
 export interface Provider {
     id: string;
     name: string;
+    /** Lower-priority fallback for otherwise unmatched HTTPS URLs. */
+    fallback?: boolean;
     match(input: string): boolean;
     parse(input: string): unknown;
     resolve(target: unknown, context?: ProviderContext): Promise<ProviderResult>;

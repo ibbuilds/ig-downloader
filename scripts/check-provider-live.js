@@ -10,7 +10,8 @@ async function main() {
     if (!provider) throw new Error(`Unknown provider: ${id}`);
     const targetUrl = process.env.IGD_LIVE_URL;
     if (!targetUrl) throw new Error('Live check is NOT CONFIGURED: IGD_LIVE_URL is required.');
-    const cookie = process.env.IG_COOKIE || '';
+    const key = `SGET_COOKIE_${id.toUpperCase().replace(/-/g, '_')}`;
+    const cookie = process.env[key] || (id === 'instagram' ? process.env.IG_COOKIE || '' : '');
     const session = provider.createSession?.({ cookie });
     const target = provider.parse(targetUrl);
     const response = await provider.resolve(target, { cookie, session });

@@ -13,11 +13,11 @@ npm run pack:release
 
 The last command writes a CLI `.tgz`, a deterministic `sget-extension-VERSION.zip`, and `SHA256SUMS` under `dist/`. The tarball uses an explicit file list; the extension ZIP includes only manifest resources and required license notices. No live credentials, response fixtures or test mocks are distributed. Inspect package contents before release; do not treat filename checks as a complete secret scanner.
 
-Install the downloaded CLI tarball with `npm install -g ./ig-downloader-0.3.0.tgz`; all three aliases (`sget`, `igd`, `ig-downloader`) are installed. Unzip the extension artifact and load the resulting folder through Chrome/Edge's unpacked-extension UI. Verify SHA-256 checksums before installing artifacts obtained outside the trusted release page.
+Install the downloaded CLI tarball with `npm install -g ./ig-downloader-0.4.0.tgz`; all three aliases (`sget`, `igd`, `ig-downloader`) are installed. Unzip the extension artifact and load the resulting folder through Chrome/Edge's unpacked-extension UI. Verify SHA-256 checksums before installing artifacts obtained outside the trusted release page.
 
 ## Independent version streams
 
-- `cli-v0.3.0` validates against `package.json`.
+- `cli-v0.4.0` validates against `package.json`.
 - `extension-v6.1.0` validates against `manifest.json`.
 - Legacy `v6.1.0` tags remain extension-only; they never stand for CLI versions.
 
