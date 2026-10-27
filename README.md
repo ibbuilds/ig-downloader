@@ -20,13 +20,14 @@ sget 'https://www.instagram.com/reel/SHORTCODE/'
 sget -u 'https://www.instagram.com/p/SHORTCODE/'
 sget -nJ 'https://www.instagram.com/p/SHORTCODE/'
 sget -f links.txt -o ./downloads -j4
+sget -f links.txt -s .sget-history    # resume later without duplicate downloads
 sget -nJ 'https://www.reddit.com/r/pics/comments/POST_ID/title/'
 sget -A 'https://public.example.org/gallery'  # visible page assets; no JS rendering
 cat links.txt | sget
 sget providers  # show installed adapters
 ```
 
-`sget` is the platform-neutral command. `igd` and `ig-downloader` continue working with exactly the same options. Short options: `-u` URLs, `-n` preview, `-a` auto/original type, `-i` image only, `-V` prefer video, `-m` media mode, `-f` input file, `-j` concurrency, `-J` JSON, `-q` quiet. Batch requests deduplicate input and use shared command-scoped session/cache and globally bounded downloads.
+`sget` is the platform-neutral command. `igd` and `ig-downloader` continue working with exactly the same options. Short options: `-u` URLs, `-n` preview, `-a` auto/original type, `-i` image only, `-V` prefer video, `-m` media mode, `-f` input file, `-j` concurrency, `-J` JSON, `-q` quiet. Use `-s FILE` or `--archive FILE` for opt-in persistent skipping of previously completed downloads; the archive stores SHA-256 fingerprints, not raw links or session tokens. Batch requests deduplicate input and use shared command-scoped session/cache and globally bounded downloads.
 
 **Built-in sources:** Instagram, Reddit, Facebook, TikTok, X/Twitter, Pinterest, YouTube, and generic public HTTPS pages/direct media. **Only Instagram has the existing full, site-specific extension and Story/Post/Reel handling.** Reddit resolves supported public post/gallery JSON when available. The other sources are experimental **public-metadata extractors**; they may only return previews/posters or fail when sites require login, JavaScript or signed streams. See [source coverage](#coverage-and-limitations). No site is claimed live-verified solely because its fixture tests pass.
 

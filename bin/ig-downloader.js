@@ -6,6 +6,7 @@ const path = require('node:path');
 const { readCookie, getRawItemsFromResponse } = require('../lib/instagram.js');
 const { resolveTarget, PROVIDERS, loadPlugin } = require('../lib/providers.js');
 const { normalizeResource } = require('../core/provider.js');
+const { archiveKey, openArchive } = require('../core/archive.js');
 const { downloadMedia } = require('../lib/download.js');
 const { MODES } = require('../shared/media.js');
 const { version } = require('../package.json');
@@ -34,6 +35,7 @@ Options:
   -o DIR                     Output directory
   -j 1..8                    Parallel downloads (default 4)
   -f FILE                    Newline-delimited targets (- for stdin)
+  -s FILE                    Skip downloads already recorded in this archive
   -J                         JSON output
   -q                         Quiet output
   -A, --all                  Include page image/video tags (up to 200)
@@ -51,6 +53,7 @@ function parseArgs(argv) {
         '--mode': 'mode', '-m': 'mode', '--output': 'output', '-o': 'output',
         '--cookie-file': 'cookieFile', '--input-json': 'inputJson',
         '--input-file': 'inputFile', '-f': 'inputFile',
+        '--archive': 'archive', '-s': 'archive',
         '--concurrency': 'concurrency', '-j': 'concurrency', '--plugin': 'plugin',
     };
     const toggles = {
@@ -111,6 +114,7 @@ function parseArgs(argv) {
     if (opts.command === 'urls') opts.urlOnly = true;
     if (opts.command === 'inspect') opts.dryRun = true;
     if (opts.urlOnly && opts.dryRun) throw new Error('Choose either URLs or inspect, not both.');
+    if (opts.archive && (opts.urlOnly || opts.dryRun)) throw new Error('--archive is only available when downloading.');
     return opts;
 }
 
@@ -282,6 +286,7 @@ async function main(argv = process.argv.slice(2)) {
         if (/429|rate.?limit/i.test(String(error?.message || ''))) throttledProviders.add(provider.id);
     }
     const scheduleDownload = createLimiter(args.concurrency);
+    const archive = args.archive ? await openArchive(args.archive) : null;
     const resolved = await mapLimit(rawTargets, Math.min(3, args.concurrency), async (raw, targetIndex) => {
         let result;
         let provider = PROVIDERS.instagram;
@@ -305,26 +310,34 @@ async function main(argv = process.argv.slice(2)) {
         }
         const mode = args.mode || (provider.id !== 'instagram' || target?.type === 'post' || result.sourceType === 'post' ? MODES.AUTO : MODES.IMAGE);
         const { available, unavailable } = planMedia(result.items, mode, provider);
-        const entry = { target: raw, provider: provider.id, validateUrl: provider.validateUrl, mode, username: result.username, unavailable, available, saved: [], errors: [] };
+        const entry = { target: raw, provider: provider.id, validateUrl: provider.validateUrl, mode, username: result.username, unavailable, available, saved: [], skipped: [], errors: [] };
         if (!args.urlOnly && !args.dryRun) {
             // Start transferring as soon as this target resolves. Awaiting per target
             // provides backpressure instead of accumulating expiring CDN links.
-            const downloaded = await Promise.all(available.map((asset) => scheduleDownload(async () => {
-                guard(provider);
-                try {
-                    const outcome = await downloadMedia(asset.media, {
-                        username: entry.username, index: asset.info.index, output: args.output || '.',
-                        validateUrl: entry.validateUrl,
-                    });
-                    return { ...asset.info, path: path.resolve(outcome.path), bytes: outcome.bytes, contentType: outcome.contentType };
-                } catch (error) {
-                    noticeRateLimit(provider, error);
-                    throw error;
-                }
-            }).then((value) => ({ ok: true, value }), (error) => ({ ok: false, error: error?.message || String(error) }))));
+            const downloaded = await Promise.all(available.map((asset) => {
+                const transfer = () => scheduleDownload(async () => {
+                    guard(provider);
+                    try {
+                        const outcome = await downloadMedia(asset.media, {
+                            username: entry.username, index: asset.info.index, output: args.output || '.',
+                            validateUrl: entry.validateUrl,
+                        });
+                        return { ...asset.info, path: path.resolve(outcome.path), bytes: outcome.bytes, contentType: outcome.contentType };
+                    } catch (error) {
+                        noticeRateLimit(provider, error);
+                        throw error;
+                    }
+                });
+                const task = archive
+                    ? archive.run(archiveKey(provider.id, raw, asset.media, mode), transfer)
+                    : transfer().then((value) => ({ skipped: false, value }));
+                return task.then((value) => ({ ok: true, value }),
+                    (error) => ({ ok: false, error: error?.message || String(error) }));
+            }));
             downloaded.forEach((result, index) => {
-                if (result.ok) entry.saved.push(result.value);
-                else entry.errors.push({ index: available[index].info.index, error: result.error });
+                if (!result.ok) entry.errors.push({ index: available[index].info.index, error: result.error });
+                else if (result.value.skipped) entry.skipped.push(available[index].info);
+                else entry.saved.push(result.value.value);
             });
         }
         return entry;
@@ -340,7 +353,7 @@ async function main(argv = process.argv.slice(2)) {
                 username: entry.username,
                 ...(args.dryRun || args.urlOnly
                     ? { unavailable: entry.unavailable, media: entry.available.map((asset) => asset.info) }
-                    : { saved: entry.saved, unavailable: entry.unavailable, errors: entry.errors }),
+                    : { saved: entry.saved, ...(archive ? { skipped: entry.skipped } : {}), unavailable: entry.unavailable, errors: entry.errors }),
             };
             return report;
         };
@@ -365,6 +378,7 @@ async function main(argv = process.argv.slice(2)) {
                 for (const asset of entry.saved) {
                     process.stdout.write(`Saved ${asset.path} [${asset.sourceKind}, ${asset.bytes} bytes]\n`);
                 }
+                if (entry.skipped.length) process.stdout.write(`Skipped ${entry.skipped.length} previously downloaded resource(s).\n`);
             }
             for (const err of entry.errors) process.stderr.write(`Failed ${entry.target} item ${err.index + 1}: ${err.error}\n`);
             if (entry.unavailable) process.stderr.write(`Skipped ${entry.unavailable} item(s) for ${entry.target}: requested media unavailable.\n`);
