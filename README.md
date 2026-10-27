@@ -26,7 +26,7 @@ npm link
 
 ### Fast commands: `igd`
 
-`npm link` installs both commands: **`igd`** (recommended) and the backwards-compatible **`ig-downloader`**. No alias configuration or extra package is needed.
+`npm link` installs both commands: **`igd`** (recommended) and the backwards-compatible **`ig-downloader`**. No alias configuration or extra package is needed. The CLI reports version **0.2.0**; the browser extension retains its independent manifest version.
 
 ```sh
 igd 'https://www.instagram.com/reel/SHORTCODE/'             # download
@@ -43,7 +43,7 @@ igd --help
 
 Subcommands are optional: `igd URL` downloads media; `get`, `urls`, `inspect` and `providers` are explicit alternatives. Legacy flags `--url-only` and `--dry-run` remain available. Short options include `-m` (mode), `-o` (output), `-j` (concurrency), `-f` (input file), and `-q` (quiet).
 
-For batches, use multiple targets or a UTF-8 file with one URL/username per line. Blank lines, lines beginning with `#` and repeated targets are skipped. `-` reads stdin; the maximum batch size is 2,000 distinct targets. GraphQL resolution uses at most three workers, while `-j` bounds total CDN downloads to 1–8 transfers. The default is 4, adjustable downward if Instagram limits requests.
+For batches, use multiple targets or a UTF-8 file with one URL/username per line. Blank lines, lines beginning with `#` and repeated targets are skipped. `-` reads stdin; the maximum batch size is 2,000 distinct targets. GraphQL resolution uses at most three workers, while `-j` bounds total CDN downloads to 1–8 transfers. The default is 4, adjustable downward if Instagram limits requests. Downloads start when a target resolves, rather than waiting for the entire batch; a global FIFO limiter keeps CDN concurrency bounded and backpressure reduces the time signed URLs sit in memory.
 
 `--json` emits the established single-target shape on success and a `{version, results, errors}` envelope for batches or per-target resolution failures. Failures return a nonzero exit code while other batch items continue. `igd urls --json` returns media metadata rather than mixing raw URL lines with JSON output.
 
