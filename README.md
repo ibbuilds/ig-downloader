@@ -41,7 +41,7 @@ Run `npm link` once to install **`igd`** (recommended) and the backwards-compati
 | Download to a folder | `igd URL -o ./media` |
 | Bounded parallel transfers | `igd URL1 URL2 -j8` |
 | Batch from file | `igd -f links.txt` |
-| Batch from a shell pipe | `cat links.txt | igd` |
+| Batch from a shell pipe | `cat links.txt \| igd` |
 
 For example:
 
